@@ -22,8 +22,9 @@ from astrbot.core.platform.message_type import MessageType
 from astrbot.core.utils.astrbot_path import get_astrbot_data_path
 from astrbot.core.utils.io import download_image_by_url
 from .covert import AudioConverter  # 导入音频转换工具类
+from .voice_file_resolver import VoiceFileResolver  # 导入语音文件解析器
 
-@register("astrbot_plugin_voice_to_text", "NickMo", "语音转文字智能回复插件", "1.0.0", "")
+@register("voice_to_text", "NickMo", "语音转文字智能回复插件", "1.0.0", "")
 class VoiceToTextPlugin(star.Star):
     """语音转文字智能回复插件 - 集成音频转换功能"""
 
@@ -47,8 +48,9 @@ class VoiceToTextPlugin(star.Star):
         self.group_recognition_blacklist = group_settings.get("Group_Recognition_Blacklist", [])
         self.group_reply_blacklist = group_settings.get("Group_Reply_Blacklist", [])
 
-        # 初始化音频转换器
+        # 初始化音频转换器和文件解析器
         self.audio_converter = AudioConverter()
+        self.voice_file_resolver = VoiceFileResolver()
 
         logger.info("语音转文字插件已加载 - 支持群聊语音识别功能")
 
@@ -177,15 +179,15 @@ class VoiceToTextPlugin(star.Star):
             logger.info(f"收到来自 {event.get_sender_name()} 的语音消息")
             logger.debug(f"语音文件信息: file={voice.file}, url={voice.url}, path={getattr(voice, 'path', None)}")
 
-            # 获取语音文件路径 - 增强错误处理
+            # 获取语音文件路径 - 使用专用解析器
             try:
                 original_file_path = await voice.convert_to_file_path()
             except Exception as e:
                 logger.error(f"语音文件路径转换失败: {e}")
                 logger.debug(f"尝试其他方式获取文件路径...")
                 
-                # 尝试备用方法获取文件路径
-                original_file_path = await self.get_voice_file_path_fallback(voice)
+                # 使用VoiceFileResolver进行文件路径解析
+                original_file_path = await self.voice_file_resolver.resolve_voice_file_path(voice)
                 
                 if not original_file_path:
                     yield event.plain_result("无法获取语音文件，请重新发送")
@@ -347,7 +349,7 @@ class VoiceToTextPlugin(star.Star):
                 possible_paths = await self._search_file_in_astrbot_dirs(voice.file)
                 if possible_paths:
                     logger.info(f"在AstrBot目录中找到文件: {possible_paths}")
-                    return possible_paths
+                    return possible_paths[0]  # 返回第一个匹配项
             
             raise original_error
             

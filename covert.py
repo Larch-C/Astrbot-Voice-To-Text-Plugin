@@ -2,6 +2,7 @@ import os
 import subprocess
 import tempfile
 import shutil
+import asyncio
 from pathlib import Path
 from pydub import AudioSegment
 from astrbot.api import logger
@@ -296,8 +297,8 @@ class AudioConverter:
         audio.export(output_path, format="mp3", bitrate="128k")
         logger.info("使用pydub转换成功")
 
-    def _convert_amr_with_ffmpeg(self, amr_path: str, output_path: str):
-        """使用FFmpeg转换AMR - 跨平台兼容性增强（Windows/Mac/Linux/Docker）"""
+    async def _convert_amr_with_ffmpeg_async(self, amr_path: str, output_path: str):
+        """使用FFmpeg异步转换AMR - 真正的异步实现"""
         # 检查FFmpeg是否可用 - 跨平台兼容性增强
         ffmpeg_cmd = self._find_ffmpeg_executable()
         if not ffmpeg_cmd:
@@ -315,39 +316,64 @@ class AudioConverter:
             output_path
         ]
 
-        # Windows系统的子进程调用优化
-        startupinfo = None
-        if os.name == 'nt':
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            startupinfo.wShowWindow = subprocess.SW_HIDE
-
         try:
-            # 使用 Popen 进行流式处理，避免大量输出缓冲在内存中
-            with subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                startupinfo=startupinfo,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-            ) as process:
-                try:
-                    # 设置超时并获取有限的输出
-                    stdout, stderr = process.communicate(timeout=60)
+            # 使用异步子进程，不阻塞事件循环
+            if os.name == 'nt':
+                # Windows系统异步子进程创建
+                process = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    creationflags=subprocess.CREATE_NO_WINDOW
+                )
+            else:
+                # Unix系统异步子进程创建
+                process = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+            
+            try:
+                # 异步等待进程完成，设置超时
+                stdout, stderr = await asyncio.wait_for(
+                    process.communicate(), 
+                    timeout=60.0
+                )
+                
+                if process.returncode != 0:
+                    # 解码字节串并限制错误信息长度
+                    stdout_str = stdout.decode('utf-8', errors='ignore')[:1000] if stdout else ""
+                    stderr_str = stderr.decode('utf-8', errors='ignore')[:1000] if stderr else ""
+                    error_msg = stderr_str or stdout_str or "未知错误"
+                    raise Exception(f"FFmpeg转换失败: {error_msg}")
                     
-                    if process.returncode != 0:
-                        # 只记录前1000字符的错误信息，避免内存问题
-                        error_msg = (stderr[:1000] if stderr else stdout[:1000]) or "未知错误"
-                        raise Exception(f"FFmpeg转换失败: {error_msg}")
-                        
-                except subprocess.TimeoutExpired:
+            except asyncio.TimeoutError:
+                # 异步超时处理
+                try:
+                    process.terminate()
+                    await asyncio.wait_for(process.wait(), timeout=5.0)
+                except asyncio.TimeoutError:
                     process.kill()
-                    raise Exception("FFmpeg转换超时")
-        except subprocess.TimeoutExpired:
-            raise Exception("FFmpeg转换超时")
+                    await process.wait()
+                raise Exception("FFmpeg转换超时")
         
-        logger.info(f"使用FFmpeg转换成功: {ffmpeg_cmd}")
+        except Exception as e:
+            logger.error(f"异步FFmpeg转换失败: {e}")
+            raise
+        
+        logger.info(f"使用异步FFmpeg转换成功: {ffmpeg_cmd}")
+
+    def _convert_amr_with_ffmpeg(self, amr_path: str, output_path: str):
+        """使用FFmpeg转换AMR - 同步包装器，保持向后兼容"""
+        # 如果在异步上下文中，使用异步版本
+        try:
+            loop = asyncio.get_running_loop()
+            # 在异步上下文中，创建任务运行异步版本
+            return asyncio.create_task(self._convert_amr_with_ffmpeg_async(amr_path, output_path))
+        except RuntimeError:
+            # 如果不在异步上下文中，使用异步方式运行
+            return asyncio.run(self._convert_amr_with_ffmpeg_async(amr_path, output_path))
 
     def _convert_amr_with_fallback(self, amr_path: str, output_path: str):
         """备用转换方法 - 尝试作为其他格式处理"""
@@ -368,8 +394,8 @@ class AudioConverter:
                 audio.export(output_path, format="mp3", bitrate="128k")
                 logger.info("使用RAW fallback转换成功")
 
-    def _convert_silk_with_ffmpeg(self, silk_path: str, output_path: str):
-        """使用FFmpeg转换SILK格式 - 跨平台兼容性增强（Windows/Mac/Linux/Docker）"""
+    async def _convert_silk_with_ffmpeg_async(self, silk_path: str, output_path: str):
+        """使用FFmpeg异步转换SILK格式 - 真正的异步实现"""
         # 检查FFmpeg是否可用 - 跨平台兼容性增强
         ffmpeg_cmd = self._find_ffmpeg_executable()
         if not ffmpeg_cmd:
@@ -380,7 +406,6 @@ class AudioConverter:
         output_path = os.path.normpath(output_path)
         
         # FFmpeg转换SILK的命令
-        # 注意：SILK格式比较特殊，可能需要特殊的解码器参数
         cmd = [
             ffmpeg_cmd, '-i', silk_path,
             '-acodec', 'libmp3lame',
@@ -391,39 +416,64 @@ class AudioConverter:
             output_path
         ]
 
-        # Windows系统的子进程调用优化
-        startupinfo = None
-        if os.name == 'nt':
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            startupinfo.wShowWindow = subprocess.SW_HIDE
-
         try:
-            # 使用 Popen 进行流式处理
-            with subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                startupinfo=startupinfo,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-            ) as process:
-                try:
-                    # 设置超时并获取输出
-                    stdout, stderr = process.communicate(timeout=60)
+            # 使用异步子进程，不阻塞事件循环
+            if os.name == 'nt':
+                # Windows系统异步子进程创建
+                process = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    creationflags=subprocess.CREATE_NO_WINDOW
+                )
+            else:
+                # Unix系统异步子进程创建
+                process = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+            
+            try:
+                # 异步等待进程完成，设置超时
+                stdout, stderr = await asyncio.wait_for(
+                    process.communicate(), 
+                    timeout=60.0
+                )
+                
+                if process.returncode != 0:
+                    # 解码字节串并限制错误信息长度
+                    stdout_str = stdout.decode('utf-8', errors='ignore')[:1000] if stdout else ""
+                    stderr_str = stderr.decode('utf-8', errors='ignore')[:1000] if stderr else ""
+                    error_msg = stderr_str or stdout_str or "未知错误"
+                    raise Exception(f"FFmpeg转换SILK失败: {error_msg}")
                     
-                    if process.returncode != 0:
-                        # 记录错误信息
-                        error_msg = (stderr[:1000] if stderr else stdout[:1000]) or "未知错误"
-                        raise Exception(f"FFmpeg转换SILK失败: {error_msg}")
-                        
-                except subprocess.TimeoutExpired:
+            except asyncio.TimeoutError:
+                # 异步超时处理
+                try:
+                    process.terminate()
+                    await asyncio.wait_for(process.wait(), timeout=5.0)
+                except asyncio.TimeoutError:
                     process.kill()
-                    raise Exception("FFmpeg转换SILK超时")
-        except subprocess.TimeoutExpired:
-            raise Exception("FFmpeg转换SILK超时")
+                    await process.wait()
+                raise Exception("FFmpeg转换SILK超时")
         
-        logger.info(f"使用FFmpeg转换SILK成功: {ffmpeg_cmd}")
+        except Exception as e:
+            logger.error(f"异步FFmpeg转换SILK失败: {e}")
+            raise
+        
+        logger.info(f"使用异步FFmpeg转换SILK成功: {ffmpeg_cmd}")
+
+    def _convert_silk_with_ffmpeg(self, silk_path: str, output_path: str):
+        """使用FFmpeg转换SILK格式 - 同步包装器，保持向后兼容"""
+        # 如果在异步上下文中，使用异步版本
+        try:
+            loop = asyncio.get_running_loop()
+            # 在异步上下文中，创建任务运行异步版本
+            return asyncio.create_task(self._convert_silk_with_ffmpeg_async(silk_path, output_path))
+        except RuntimeError:
+            # 如果不在异步上下文中，使用异步方式运行
+            return asyncio.run(self._convert_silk_with_ffmpeg_async(silk_path, output_path))
 
     def _convert_silk_fallback(self, silk_path: str, output_path: str) -> str:
         """SILK格式备用转换方法 - 使用pilk库"""
@@ -638,10 +688,11 @@ class AudioConverter:
                         result = subprocess.run([which_cmd, 'ffmpeg'], 
                                               capture_output=True, text=True, timeout=10)
                         if result.returncode == 0 and result.stdout.strip():
-                            path = result.stdout.strip()
-                            if os.path.isfile(path) and os.access(path, os.X_OK):
-                                logger.info(f"通过{which_cmd}找到FFmpeg: {path}")
-                                return path
+                            paths = result.stdout.strip().split('\n')  # 得到路径列表
+                            for path in paths:  # 遍历列表
+                                if os.path.isfile(path) and os.access(path, os.X_OK):  # 正确：逐一检查每个路径
+                                    logger.info(f"通过{which_cmd}找到FFmpeg: {path}")
+                                    return path 
             except Exception as e:
                 logger.debug(f"which命令搜索失败: {e}")
                 
@@ -668,10 +719,11 @@ class AudioConverter:
                                                '-type', 'f', '-executable', '-maxdepth', '3'], 
                                               capture_output=True, text=True, timeout=30)
                         if result.returncode == 0 and result.stdout.strip():
-                            path = result.stdout.strip().split('\n')  # 取第一个结果
-                            if os.path.isfile(path) and os.access(path, os.X_OK):
-                                logger.info(f"通过递归搜索找到FFmpeg: {path}")
-                                return path
+                            paths = result.stdout.strip().split('\n')  # 得到路径列表
+                            for path in paths:  # 遍历列表
+                                if os.path.isfile(path) and os.access(path, os.X_OK):
+                                    logger.info(f"通过递归搜索找到FFmpeg: {path}")
+                                    return path
                     except Exception as e:
                         logger.debug(f"递归搜索{search_dir}失败: {e}")
                         continue
