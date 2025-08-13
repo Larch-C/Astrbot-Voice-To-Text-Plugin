@@ -1,6 +1,6 @@
 name: "voice_to_text"
 author: "NickMo"
-description: "语音转文字智能回复插件，支持OpenAI、Groq、Deepgram、Azure等多种兼容OpenAI格式的STT服务提供商"
+description: "AstrBot 语音转文字插件\n一个AstrBot插件，支持多种音频格式的语音识别，并能够自动生成符合框架人格的智能回复\n- 多格式支持: AMR、SILK、MP3、WAV、OGG、FLAC、M4A等主流音频格式\n- 智能格式转换: 自动检测并转换不支持的音频格式为STT兼容格式\n- 多重转换策略: PyDub、FFmpeg、备用方法等多种转换方案，确保最高成功率\n- 文件验证: 完整的文件完整性检查和格式验证机制",
 version: "1.0.0"
 "repo": "https://github.com/NickCharlie/Astrbot-Voice-To-Text-Plugin"
 tags:
