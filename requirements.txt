@@ -1,4 +1,5 @@
-aiohttp>=3.8.0
-pydub>=0.25.1
-ffmpeg-python>=0.2.0
-silk-python>=1.0.0
+aiohttp
+pydub
+ffmpeg-python
+pilk  # SILK格式解码库，作为FFmpeg的备用方案
+# silk-python  # 已弃用: SILK格式转换已改为使用FFmpeg实现，不再依赖此库

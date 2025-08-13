@@ -51,7 +51,7 @@ LLM智能回复 → 临时文件清理
 - `aiohttp>=3.8.0`: 异步HTTP客户端
 - `pydub>=0.25.1`: 音频处理库
 - `ffmpeg-python>=0.2.0`: FFmpeg Python接口
-- `silk-python>=1.0.0`: SILK格式支持(可选)
+- ~~`silk-python>=1.0.0`~~: ~~SILK格式支持~~ (已废弃，现使用FFmpeg处理SILK格式)
 
 ### 系统工具依赖
 

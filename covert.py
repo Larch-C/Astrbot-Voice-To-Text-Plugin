@@ -5,15 +5,9 @@ import shutil
 from pathlib import Path
 from pydub import AudioSegment
 from astrbot.api import logger
-
-# 检查 silk-python 库是否可用
-try:
-    import silk
-    SILK_AVAILABLE = True
-except ImportError:
-    SILK_AVAILABLE = False
-    silk = None
-
+import pilk
+import uuid
+# import silk  # 已弃用: SILK库转换已被FFmpeg替代
 
 class AudioConverter:
     """音频格式转换工具类 - Windows兼容"""
@@ -230,7 +224,7 @@ class AudioConverter:
 
     def silk_to_mp3(self, silk_path: str, output_path: str = None) -> str:
         """
-        将SILK文件转换为MP3格式（用于 QQ 语音）
+        将SILK文件转换为MP3格式（用于 QQ 语音）- 使用FFmpeg实现
 
         Args:
             silk_path: 输入的SILK文件路径
@@ -247,31 +241,50 @@ class AudioConverter:
                 silk_filename = Path(silk_path).stem
                 output_path = os.path.join(self.temp_dir, f"{silk_filename}.mp3")
 
-            # 先将SILK转为WAV，再转为MP3
-            wav_temp = os.path.join(self.temp_dir, f"{Path(silk_path).stem}_temp.wav")
-
-            # 使用silk-python库进行转换
-            if not SILK_AVAILABLE:
-                logger.error("silk-python库未安装，无法处理SILK格式")
-                raise ImportError("silk-python库未安装，无法处理SILK格式")
+            # 使用FFmpeg直接转换SILK为MP3
+            logger.info(f"开始使用FFmpeg转换SILK格式: {silk_path} -> {output_path}")
             
+            # 尝试FFmpeg转换SILK
             try:
-                silk.decode(silk_path, wav_temp, 24000)  # 24kHz采样率
-
-                # 将WAV转为MP3
-                audio = AudioSegment.from_wav(wav_temp)
-                audio.export(output_path, format="mp3", bitrate="128k")
-
-                # 清理临时文件
-                if os.path.exists(wav_temp):
-                    os.remove(wav_temp)
-
+                self._convert_silk_with_ffmpeg(silk_path, output_path)
                 logger.info(f"SILK转MP3成功: {silk_path} -> {output_path}")
                 return output_path
+            except Exception as ffmpeg_error:
+                logger.warning(f"FFmpeg转换SILK失败: {ffmpeg_error}")
+                
+                # 如果FFmpeg失败，尝试备用方法
+                logger.info("尝试备用SILK转换方法...")
+                try:
+                    return self._convert_silk_fallback(silk_path, output_path)
+                except Exception as fallback_error:
+                    logger.error(f"备用SILK转换方法也失败: {fallback_error}")
+                    raise Exception(f"所有SILK转换方法都失败: FFmpeg错误={ffmpeg_error}, 备用方法错误={fallback_error}")
 
-            except ImportError:
-                logger.error("silk-python库未安装，无法处理SILK格式")
-                raise
+            # 注释：原有的silk库转换方法已被FFmpeg方法替代
+            # 以下是原有使用silk-python库的转换代码（已注释）：
+            # ================================================================
+            # # 先将SILK转为WAV，再转为MP3
+            # wav_temp = os.path.join(self.temp_dir, f"{Path(silk_path).stem}_temp.wav")
+            # 
+            # try:
+            #     import silk  # silk-python库
+            #     silk.decode(silk_path, wav_temp, 24000)  # 24kHz采样率
+            # 
+            #     # 将WAV转为MP3
+            #     audio = AudioSegment.from_wav(wav_temp)
+            #     audio.export(output_path, format="mp3", bitrate="128k")
+            # 
+            #     # 清理临时文件
+            #     if os.path.exists(wav_temp):
+            #         os.remove(wav_temp)
+            # 
+            #     logger.info(f"SILK转MP3成功: {silk_path} -> {output_path}")
+            #     return output_path
+            # 
+            # except ImportError:
+            #     logger.error("silk-python库未安装，无法处理SILK格式")
+            #     raise
+            # ================================================================
 
         except Exception as e:
             logger.error(f"SILK转MP3失败: {e}")
@@ -284,31 +297,11 @@ class AudioConverter:
         logger.info("使用pydub转换成功")
 
     def _convert_amr_with_ffmpeg(self, amr_path: str, output_path: str):
-        """使用FFmpeg转换AMR - 增强Windows兼容性"""
-        # 检查FFmpeg是否可用 - Windows兼容性增强
-        ffmpeg_cmd = 'ffmpeg'
-        if not shutil.which(ffmpeg_cmd):
-            # Windows系统尝试查找ffmpeg.exe
-            if os.name == 'nt':
-                ffmpeg_cmd = 'ffmpeg.exe'
-                if not shutil.which(ffmpeg_cmd):
-                    # 尝试常见的Windows安装路径
-                    common_paths = [
-                        r'C:\ffmpeg\bin\ffmpeg.exe',
-                        r'C:\Program Files\FFmpeg\bin\ffmpeg.exe',
-                        r'C:\Program Files (x86)\FFmpeg\bin\ffmpeg.exe',
-                        os.path.expanduser(r'~\scoop\apps\ffmpeg\current\bin\ffmpeg.exe'),
-                        os.path.expanduser(r'~\AppData\Local\Microsoft\WindowsApps\ffmpeg.exe')
-                    ]
-                    
-                    for path in common_paths:
-                        if os.path.exists(path):
-                            ffmpeg_cmd = path
-                            break
-                    else:
-                        raise Exception("FFmpeg未安装或不在PATH中。请参考README.md安装FFmpeg")
-            else:
-                raise Exception("FFmpeg未安装或不在PATH中")
+        """使用FFmpeg转换AMR - 跨平台兼容性增强（Windows/Mac/Linux/Docker）"""
+        # 检查FFmpeg是否可用 - 跨平台兼容性增强
+        ffmpeg_cmd = self._find_ffmpeg_executable()
+        if not ffmpeg_cmd:
+            raise Exception("FFmpeg未安装或不在PATH中。请参考README.md安装FFmpeg")
             
         # 确保路径在Windows上正确处理
         amr_path = os.path.normpath(amr_path)
@@ -374,3 +367,326 @@ class AudioConverter:
                 )
                 audio.export(output_path, format="mp3", bitrate="128k")
                 logger.info("使用RAW fallback转换成功")
+
+    def _convert_silk_with_ffmpeg(self, silk_path: str, output_path: str):
+        """使用FFmpeg转换SILK格式 - 跨平台兼容性增强（Windows/Mac/Linux/Docker）"""
+        # 检查FFmpeg是否可用 - 跨平台兼容性增强
+        ffmpeg_cmd = self._find_ffmpeg_executable()
+        if not ffmpeg_cmd:
+            raise Exception("FFmpeg未安装或不在PATH中。请参考README.md安装FFmpeg")
+        
+        # 确保路径正确处理
+        silk_path = os.path.normpath(silk_path)
+        output_path = os.path.normpath(output_path)
+        
+        # FFmpeg转换SILK的命令
+        # 注意：SILK格式比较特殊，可能需要特殊的解码器参数
+        cmd = [
+            ffmpeg_cmd, '-i', silk_path,
+            '-acodec', 'libmp3lame',
+            '-ar', '24000',  # 设置采样率为24kHz（SILK常用采样率）
+            '-ab', '128k',   # 设置比特率
+            '-ac', '1',      # 单声道
+            '-y',            # 覆盖输出文件
+            output_path
+        ]
+
+        # Windows系统的子进程调用优化
+        startupinfo = None
+        if os.name == 'nt':
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = subprocess.SW_HIDE
+
+        try:
+            # 使用 Popen 进行流式处理
+            with subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                startupinfo=startupinfo,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+            ) as process:
+                try:
+                    # 设置超时并获取输出
+                    stdout, stderr = process.communicate(timeout=60)
+                    
+                    if process.returncode != 0:
+                        # 记录错误信息
+                        error_msg = (stderr[:1000] if stderr else stdout[:1000]) or "未知错误"
+                        raise Exception(f"FFmpeg转换SILK失败: {error_msg}")
+                        
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    raise Exception("FFmpeg转换SILK超时")
+        except subprocess.TimeoutExpired:
+            raise Exception("FFmpeg转换SILK超时")
+        
+        logger.info(f"使用FFmpeg转换SILK成功: {ffmpeg_cmd}")
+
+    def _convert_silk_fallback(self, silk_path: str, output_path: str) -> str:
+        """SILK格式备用转换方法 - 使用pilk库"""
+        try:
+            # 方法1: 使用pilk库进行SILK解码（推荐方法）
+            try:
+                logger.info("尝试使用pilk库解码SILK格式")
+                return self._convert_silk_with_pilk(silk_path, output_path)
+            except Exception as e:
+                logger.debug(f"pilk解码失败: {e}")
+                
+            # 方法2: 尝试使用PyDub的通用解码器
+            try:
+                audio = AudioSegment.from_file(silk_path)
+                audio.export(output_path, format="mp3", bitrate="128k")
+                logger.info("使用PyDub通用解码器转换SILK成功")
+                return output_path
+            except Exception as e:
+                logger.debug(f"PyDub通用解码器失败: {e}")
+                
+            # 方法3: 尝试作为原始音频数据处理
+            try:
+                # 跳过SILK文件头，尝试解码音频数据
+                with open(silk_path, 'rb') as f:
+                    # 跳过SILK文件头（通常前几个字节是标识符）
+                    header = f.read(10)
+                    if header.startswith(b'\x02#!SILK_V3'):
+                        # 跳过SILK V3标识符
+                        f.seek(10)
+                    else:
+                        f.seek(0)
+                    
+                    raw_data = f.read()
+                    
+                # 尝试将原始数据作为PCM处理
+                audio = AudioSegment.from_raw(
+                    raw_data,
+                    frame_rate=24000,  # SILK常用采样率
+                    channels=1,        # 单声道
+                    sample_width=2     # 16位
+                )
+                audio.export(output_path, format="mp3", bitrate="128k")
+                logger.info("使用原始数据方法转换SILK成功")
+                return output_path
+                
+            except Exception as e:
+                logger.debug(f"原始数据方法失败: {e}")
+                
+            # 如果所有备用方法都失败
+            raise Exception("所有SILK备用转换方法都失败")
+            
+        except Exception as e:
+            logger.error(f"SILK备用转换失败: {e}")
+            raise
+
+    def _convert_silk_with_pilk(self, silk_path: str, output_path: str) -> str:
+        """使用pilk库转换SILK格式"""
+        try:
+            
+            # 生成临时PCM文件路径
+            pcm_temp = os.path.join(self.temp_dir, f"temp_silk_{uuid.uuid4().hex}.pcm")
+            
+            try:
+                # 使用pilk解码SILK为PCM
+                logger.info(f"使用pilk解码SILK: {silk_path} -> {pcm_temp}")
+                duration = pilk.decode(silk_path, pcm_temp)
+                logger.info(f"SILK解码成功，音频时长: {duration}ms")
+                
+                # 验证PCM文件是否生成
+                if not os.path.exists(pcm_temp) or os.path.getsize(pcm_temp) == 0:
+                    raise Exception("pilk解码生成的PCM文件无效")
+                
+                # 使用pydub将PCM转换为MP3
+                # pilk默认输出16-bit, 单声道, 采样率根据原SILK文件确定
+                # 常见的SILK采样率: 8000, 12000, 16000, 24000
+                sample_rates = [24000, 16000, 12000, 8000]  # 正确的列表语法 按优先级排序
+                
+                conversion_success = False
+                for sample_rate in sample_rates:
+                    try:
+                        logger.info(f"尝试使用采样率 {sample_rate}Hz 转换PCM到MP3")
+                        audio = AudioSegment.from_raw(
+                            pcm_temp,
+                            frame_rate=sample_rate,
+                            channels=1,
+                            sample_width=2  # 16-bit = 2 bytes
+                        )
+                        audio.export(output_path, format="mp3", bitrate="128k")
+                        logger.info(f"pilk转换SILK成功: {silk_path} -> {output_path}")
+                        conversion_success = True
+                        break
+                    except Exception as e:
+                        logger.debug(f"采样率 {sample_rate}Hz 转换失败: {e}")
+                        continue
+                
+                if not conversion_success:
+                    raise Exception("所有采样率都转换失败")
+                    
+                return output_path
+                
+            finally:
+                # 清理临时PCM文件
+                if os.path.exists(pcm_temp):
+                    try:
+                        os.remove(pcm_temp)
+                        logger.debug(f"清理临时PCM文件: {pcm_temp}")
+                    except Exception as e:
+                        logger.warning(f"清理临时PCM文件失败: {e}")
+                
+        except ImportError:
+            logger.error("pilk库未安装，无法使用pilk解码SILK格式")
+            raise Exception("pilk库未安装，请运行: pip install pilk")
+        except Exception as e:
+            logger.error(f"pilk转换SILK失败: {e}")
+            raise
+
+    def _find_ffmpeg_executable(self) -> str:
+        """
+        跨平台查找FFmpeg可执行文件 - 支持Windows/Mac/Linux/Docker环境
+        
+        Returns:
+            str: FFmpeg可执行文件的完整路径，如果未找到则返回None
+        """
+        # 1. 首先尝试在PATH中查找标准命令
+        standard_commands = ['ffmpeg']
+        if os.name == 'nt':  # Windows
+            standard_commands.append('ffmpeg.exe')
+            
+        for cmd in standard_commands:
+            if shutil.which(cmd):
+                logger.info(f"在PATH中找到FFmpeg: {shutil.which(cmd)}")
+                return cmd
+                
+        logger.debug("未在PATH中找到FFmpeg，尝试搜索常见安装位置...")
+        
+        # 2. 搜索常见的安装路径
+        search_paths = []
+        
+        if os.name == 'nt':  # Windows
+            search_paths = [
+                r'C:\ffmpeg\bin\ffmpeg.exe',
+                r'C:\Program Files\FFmpeg\bin\ffmpeg.exe', 
+                r'C:\Program Files (x86)\FFmpeg\bin\ffmpeg.exe',
+                os.path.expanduser(r'~\scoop\apps\ffmpeg\current\bin\ffmpeg.exe'),
+                os.path.expanduser(r'~\AppData\Local\Microsoft\WindowsApps\ffmpeg.exe'),
+                r'C:\ProgramData\chocolatey\bin\ffmpeg.exe',
+            ]
+        else:  # Mac/Linux/Docker
+            search_paths = [
+                # 标准Linux路径
+                '/usr/bin/ffmpeg',
+                '/usr/local/bin/ffmpeg',
+                '/bin/ffmpeg',
+                '/sbin/ffmpeg',
+                
+                # Docker常见路径
+                '/usr/lib/ffmpeg/ffmpeg',
+                '/opt/ffmpeg/bin/ffmpeg',
+                '/app/ffmpeg',
+                
+                # Mac常见路径 (Homebrew等)
+                '/opt/homebrew/bin/ffmpeg',  # Apple Silicon Mac (M1/M2)
+                '/usr/local/Cellar/ffmpeg/*/bin/ffmpeg',  # Intel Mac
+                '/opt/local/bin/ffmpeg',  # MacPorts
+
+                '/root/.pyffmpeg/bin/ffmpeg', # 特殊处理
+                
+                # 用户目录路径
+                os.path.expanduser('~/bin/ffmpeg'),
+                os.path.expanduser('~/.local/bin/ffmpeg'),
+                
+                # 其他可能的路径
+                '/snap/bin/ffmpeg',  # Snap包
+                '/var/lib/snapd/snap/bin/ffmpeg',
+            ]
+            
+        # 搜索所有可能的路径
+        for path in search_paths:
+            # 处理通配符路径（如Homebrew的版本化路径）
+            if '*' in path:
+                import glob
+                matches = glob.glob(path)
+                for match in matches:
+                    if os.path.isfile(match) and os.access(match, os.X_OK):
+                        logger.info(f"在通配符路径中找到FFmpeg: {match}")
+                        return match
+            else:
+                if os.path.isfile(path) and os.access(path, os.X_OK):
+                    logger.info(f"在固定路径中找到FFmpeg: {path}")
+                    return path
+                    
+        # 3. 尝试使用whereis命令（Linux/Mac）
+        if os.name != 'nt':
+            try:
+                result = subprocess.run(['whereis', 'ffmpeg'], 
+                                      capture_output=True, text=True, timeout=10)
+                if result.returncode == 0:
+                    # whereis输出格式: "ffmpeg: /usr/bin/ffmpeg /usr/share/man/man1/ffmpeg.1"
+                    paths = result.stdout.split()[1:]  # 跳过命令名
+                    for path in paths:
+                        if os.path.isfile(path) and os.access(path, os.X_OK) and 'man' not in path:
+                            logger.info(f"通过whereis找到FFmpeg: {path}")
+                            return path
+            except Exception as e:
+                logger.debug(f"whereis命令失败: {e}")
+                
+        # 4. 尝试使用which命令的变体（适用于某些Docker环境）
+        if os.name != 'nt':
+            try:
+                for which_cmd in ['which', '/usr/bin/which', '/bin/which']:
+                    if os.path.exists(which_cmd) or shutil.which(which_cmd.split('/')[-1]):
+                        result = subprocess.run([which_cmd, 'ffmpeg'], 
+                                              capture_output=True, text=True, timeout=10)
+                        if result.returncode == 0 and result.stdout.strip():
+                            path = result.stdout.strip()
+                            if os.path.isfile(path) and os.access(path, os.X_OK):
+                                logger.info(f"通过{which_cmd}找到FFmpeg: {path}")
+                                return path
+            except Exception as e:
+                logger.debug(f"which命令搜索失败: {e}")
+                
+        # 5. 检查环境变量中可能指定的FFmpeg路径
+        ffmpeg_env_paths = [
+            os.environ.get('FFMPEG_PATH'),
+            os.environ.get('FFMPEG_BINARY'),
+            os.environ.get('FFMPEG_EXECUTABLE'),
+        ]
+        
+        for env_path in ffmpeg_env_paths:
+            if env_path and os.path.isfile(env_path) and os.access(env_path, os.X_OK):
+                logger.info(f"通过环境变量找到FFmpeg: {env_path}")
+                return env_path
+                
+        # 6. 最后尝试递归搜索一些目录（限制深度避免性能问题）
+        if os.name != 'nt':  # 只在Unix系统上进行递归搜索
+            search_dirs = ['/usr', '/opt', '/app']
+            for search_dir in search_dirs:
+                if os.path.isdir(search_dir):
+                    try:
+                        # 使用find命令进行有限深度搜索
+                        result = subprocess.run(['find', search_dir, '-name', 'ffmpeg', 
+                                               '-type', 'f', '-executable', '-maxdepth', '3'], 
+                                              capture_output=True, text=True, timeout=30)
+                        if result.returncode == 0 and result.stdout.strip():
+                            path = result.stdout.strip().split('\n')  # 取第一个结果
+                            if os.path.isfile(path) and os.access(path, os.X_OK):
+                                logger.info(f"通过递归搜索找到FFmpeg: {path}")
+                                return path
+                    except Exception as e:
+                        logger.debug(f"递归搜索{search_dir}失败: {e}")
+                        continue
+        
+        logger.error("在所有可能的位置都未找到FFmpeg可执行文件")
+        logger.info("FFmpeg搜索详情:")
+        logger.info(f"- 操作系统: {os.name}")
+        logger.info(f"- PATH环境变量: {os.environ.get('PATH', 'Not found')}")
+        logger.info("- 建议解决方案:")
+        if os.name == 'nt':
+            logger.info("  Windows: 从 https://ffmpeg.org/download.html 下载并添加到PATH")
+        else:
+            logger.info("  Mac: brew install ffmpeg")
+            logger.info("  Ubuntu/Debian: apt-get install ffmpeg")
+            logger.info("  CentOS/RHEL: yum install ffmpeg 或 dnf install ffmpeg")
+            logger.info("  Docker: 在Dockerfile中添加 RUN apt-get update && apt-get install -y ffmpeg")
+            
+        return None
