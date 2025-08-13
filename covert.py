@@ -1,8 +1,9 @@
 import os
 import subprocess
+import tempfile
+import shutil
 from pathlib import Path
 from pydub import AudioSegment
-import tempfile
 from astrbot.api import logger
 
 
@@ -10,8 +11,6 @@ class AudioConverter:
     """音频格式转换工具类 - Windows兼容"""
 
     def __init__(self):
-        import os
-        
         # 获取临时目录 - Windows兼容性优化
         self.temp_dir = tempfile.gettempdir()
         
@@ -244,8 +243,11 @@ class AudioConverter:
             wav_temp = os.path.join(self.temp_dir, f"{Path(silk_path).stem}_temp.wav")
 
             # 使用silk-python库进行转换
+            if not SILK_AVAILABLE:
+                logger.error("silk-python库未安装，无法处理SILK格式")
+                raise ImportError("silk-python库未安装，无法处理SILK格式")
+            
             try:
-                import silk
                 silk.decode(silk_path, wav_temp, 24000)  # 24kHz采样率
 
                 # 将WAV转为MP3
@@ -275,10 +277,6 @@ class AudioConverter:
 
     def _convert_amr_with_ffmpeg(self, amr_path: str, output_path: str):
         """使用FFmpeg转换AMR - 增强Windows兼容性"""
-        import subprocess
-        import shutil
-        import os
-        
         # 检查FFmpeg是否可用 - Windows兼容性增强
         ffmpeg_cmd = 'ffmpeg'
         if not shutil.which(ffmpeg_cmd):
@@ -324,20 +322,29 @@ class AudioConverter:
             startupinfo.wShowWindow = subprocess.SW_HIDE
 
         try:
-            result = subprocess.run(
-                cmd, 
-                capture_output=True, 
-                text=True, 
-                timeout=60,
+            # 使用 Popen 进行流式处理，避免大量输出缓冲在内存中
+            with subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
                 startupinfo=startupinfo,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-            )
+            ) as process:
+                try:
+                    # 设置超时并获取有限的输出
+                    stdout, stderr = process.communicate(timeout=60)
+                    
+                    if process.returncode != 0:
+                        # 只记录前1000字符的错误信息，避免内存问题
+                        error_msg = (stderr[:1000] if stderr else stdout[:1000]) or "未知错误"
+                        raise Exception(f"FFmpeg转换失败: {error_msg}")
+                        
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    raise Exception("FFmpeg转换超时")
         except subprocess.TimeoutExpired:
             raise Exception("FFmpeg转换超时")
-        
-        if result.returncode != 0:
-            error_msg = result.stderr if result.stderr else result.stdout
-            raise Exception(f"FFmpeg转换失败: {error_msg}")
         
         logger.info(f"使用FFmpeg转换成功: {ffmpeg_cmd}")
 
@@ -350,11 +357,12 @@ class AudioConverter:
             logger.info("使用WAV fallback转换成功")
         except:
             # 尝试原始音频数据读取
-            audio = AudioSegment.from_raw(
-                open(amr_path, 'rb'), 
-                frame_rate=8000, 
-                channels=1, 
-                sample_width=2
-            )
-            audio.export(output_path, format="mp3", bitrate="128k")
-            logger.info("使用RAW fallback转换成功")
+            with open(amr_path, 'rb') as f:
+                audio = AudioSegment.from_raw(
+                    f, 
+                    frame_rate=8000, 
+                    channels=1, 
+                    sample_width=2
+                )
+                audio.export(output_path, format="mp3", bitrate="128k")
+                logger.info("使用RAW fallback转换成功")

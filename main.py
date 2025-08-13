@@ -3,12 +3,24 @@ import asyncio
 import time
 import tempfile
 import uuid
+import glob
+import base64
+import json
+import aiohttp
+import ssl
+import certifi
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
 from astrbot.api.message_components import Record
 from astrbot.api.event import AstrMessageEvent, MessageEventResult
 from astrbot.api.event import filter
 import astrbot.api.star as star
 from astrbot.api.star import register, Context
 from astrbot.api import logger, AstrBotConfig
+from astrbot.core.platform.message_type import MessageType
+from astrbot.core.utils.astrbot_path import get_astrbot_data_path
+from astrbot.core.utils.io import download_image_by_url
 from .covert import AudioConverter  # 导入音频转换工具类
 
 @register("voice_to_text", "NickMo", "语音转文字智能回复插件", "1.0.0", "")
@@ -42,8 +54,6 @@ class VoiceToTextPlugin(star.Star):
 
     def should_process_voice(self, event: AstrMessageEvent) -> bool:
         """检查是否应该处理语音消息"""
-        from astrbot.core.platform.message_type import MessageType
-        
         message_type = event.get_message_type()
         group_id = event.get_group_id()
         
@@ -132,8 +142,6 @@ class VoiceToTextPlugin(star.Star):
 
     def should_generate_reply(self, event: AstrMessageEvent) -> bool:
         """检查是否应该生成智能回复"""
-        from astrbot.core.platform.message_type import MessageType
-        
         message_type = event.get_message_type()
         group_id = event.get_group_id()
         
@@ -219,7 +227,7 @@ class VoiceToTextPlugin(star.Star):
 
             # 检查音频格式是否被STT服务支持
             whisper_supported_formats = ['flac', 'm4a', 'mp3', 'mp4', 'mpeg', 'mpga', 'oga', 'ogg', 'wav', 'webm']
-            needs_conversion = audio_format not in whisper_supported_formats and audio_format not in ['mp3', 'wav']
+            needs_conversion = audio_format not in whisper_supported_formats
             
             # 音频格式转换 - 确保转换为STT支持的格式
             if self.enable_audio_conversion and needs_conversion:
@@ -345,9 +353,6 @@ class VoiceToTextPlugin(star.Star):
             
     async def _search_file_in_astrbot_dirs(self, filename: str) -> list:
         """在AstrBot相关目录中搜索文件"""
-        import glob
-        from astrbot.core.utils.astrbot_path import get_astrbot_data_path
-        
         search_paths = []
         try:
             astrbot_data_path = get_astrbot_data_path()
@@ -719,39 +724,6 @@ class VoiceToTextPlugin(star.Star):
                 await asyncio.sleep(1)  # 重试前等待1秒
         return None
 
-    async def convert_audio_file(self, original_file_path: str) -> str:
-        """转换音频文件格式"""
-        try:
-            # 检测音频格式
-            audio_format = self.audio_converter.detect_audio_format(original_file_path)
-            logger.info(f"检测到音频格式: {audio_format}")
-
-            # 如果已经是支持的格式，直接返回
-            if audio_format in ['mp3', 'wav']:
-                logger.info("音频格式已支持，无需转换")
-                return original_file_path
-
-            # 执行格式转换
-            if audio_format == 'amr':
-                logger.info("正在转换AMR格式到MP3...")
-                converted_path = self.audio_converter.amr_to_mp3(original_file_path)
-            elif audio_format == 'silk':
-                logger.info("正在转换SILK格式到MP3...")
-                converted_path = self.audio_converter.silk_to_mp3(original_file_path)
-            else:
-                logger.info("正在进行通用音频格式转换...")
-                converted_path = self.audio_converter.convert_to_mp3(original_file_path)
-
-            if os.path.exists(converted_path):
-                logger.info(f"音频转换成功: {converted_path}")
-                return converted_path
-            else:
-                logger.error("音频转换失败: 输出文件不存在")
-                return None
-
-        except Exception as e:
-            logger.error(f"音频转换失败: {e}")
-            return None
 
     async def call_official_stt(self, audio_file_path: str) -> str:
         """直接调用官方AstrBot STT接口"""
