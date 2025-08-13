@@ -1,0 +1,32 @@
+name: "voice_to_text"
+author: "NickMo"
+description: "语音转文字智能回复插件，支持OpenAI、Groq、Deepgram、Azure等多种兼容OpenAI格式的STT服务提供商"
+version: "1.0.0"
+repo: ""
+tags:
+  - "语音识别"
+  - "STT"
+  - "语音助手"
+  - "多提供商支持"
+  - "OpenAI兼容"
+homepage: ""
+license: "MIT"
+compatibility:
+  min_astrbot_version: "3.4.0"
+platforms:
+  - "aiocqhttp"
+  - "qq"
+features:
+  - "多STT提供商支持 (OpenAI、Groq、Deepgram、Azure等)"
+  - "兼容OpenAI格式接口"
+  - "智能音频格式转换"
+  - "控制台日志输出"
+  - "可视化配置界面"
+  - "框架人格系统集成"
+keywords:
+  - voice
+  - speech
+  - recognition
+  - stt
+  - whisper
+  - chat

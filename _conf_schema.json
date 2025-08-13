@@ -1,0 +1,187 @@
+{
+  "Voice_Recognition": {
+    "description": "语音识别设置",
+    "type": "object",
+    "hint": "语音识别服务提供商配置",
+    "items": {
+      "STT_Provider": {
+        "description": "语音转文字服务提供商",
+        "type": "string",
+        "hint": "选择语音识别服务提供商",
+        "default": "astrbot_builtin"
+      },
+      "Enable_Voice_Processing": {
+        "description": "是否启用语音消息处理",
+        "type": "bool",
+        "hint": "如果为true，则自动处理收到的语音消息",
+        "default": true
+      },
+      "Max_Audio_Size_MB": {
+        "description": "语音文件大小限制",
+        "type": "int",
+        "hint": "语音文件大小限制，单位为MB",
+        "default": 25
+      }
+    }
+  },
+  "Group_Chat_Settings": {
+    "description": "群聊语音识别设置",
+    "type": "object",
+    "hint": "控制群聊中的语音识别和回复行为",
+    "items": {
+      "Enable_Group_Voice_Recognition": {
+        "description": "是否识别群聊语音",
+        "type": "bool",
+        "hint": "如果为true，则在群聊中识别语音消息",
+        "default": true
+      },
+      "Enable_Group_Voice_Reply": {
+        "description": "是否回复群聊语音",
+        "type": "bool",
+        "hint": "如果为true，则对群聊中的语音识别结果生成智能回复",
+        "default": false
+      },
+      "Group_Recognition_Whitelist": {
+        "description": "群聊语音识别白名单",
+        "type": "list",
+        "items": {"type": "string"},
+        "hint": "指定允许进行语音识别的群号列表，为空则对所有群聊生效",
+        "default": []
+      },
+      "Group_Reply_Whitelist": {
+        "description": "群聊语音回复白名单",
+        "type": "list",
+        "items": {"type": "string"},
+        "hint": "指定允许进行语音回复的群号列表，为空则对所有群聊生效",
+        "default": []
+      },
+      "Group_Recognition_Blacklist": {
+        "description": "群聊语音识别黑名单",
+        "type": "list",
+        "items": {"type": "string"},
+        "hint": "指定禁止进行语音识别的群号列表",
+        "default": []
+      },
+      "Group_Reply_Blacklist": {
+        "description": "群聊语音回复黑名单",
+        "type": "list",
+        "items": {"type": "string"},
+        "hint": "指定禁止进行语音回复的群号列表",
+        "default": []
+      }
+    }
+  },
+  "STT_API_Config": {
+    "description": "兼容OpenAI格式的语音转文字API配置",
+    "type": "object",
+    "hint": "支持OpenAI Whisper及其他兼容OpenAI格式的语音转文字服务提供商",
+    "items": {
+      "API_Key": {
+        "description": "API密钥",
+        "type": "string",
+        "hint": "语音转文字服务的API密钥，根据所选服务提供商填写",
+        "default": ""
+      },
+      "API_Base_URL": {
+        "description": "API基础URL",
+        "type": "string",
+        "hint": "语音转文字服务的API基础URL，支持OpenAI、Groq、Deepgram等兼容服务",
+        "default": "https://api.openai.com/v1"
+      },
+      "Model": {
+        "description": "语音识别模型",
+        "type": "string",
+        "hint": "语音识别模型名称，如：whisper-1 (OpenAI)、whisper-large-v3 (Groq)、nova-2 (Deepgram)等",
+        "default": "whisper-1"
+      },
+      "Provider_Type": {
+        "description": "服务提供商类型",
+        "type": "string",
+        "hint": "选择语音转文字服务提供商：openai、groq、deepgram、azure、其他兼容服务",
+        "default": "openai"
+      },
+      "Custom_Headers": {
+        "description": "自定义请求头",
+        "type": "object",
+        "hint": "某些服务提供商可能需要的额外请求头参数",
+        "default": {},
+        "items": {}
+      }
+    }
+  },
+  "Chat_Reply": {
+    "description": "智能回复设置",
+    "type": "object",
+    "hint": "语音识别后的智能回复配置",
+    "items": {
+      "Enable_Chat_Reply": {
+        "description": "是否启用智能回复",
+        "type": "bool",
+        "hint": "如果为true，则在语音识别后自动生成智能回复",
+        "default": true
+      },
+      "Chat_Provider": {
+        "description": "聊天服务提供商",
+        "type": "string",
+        "hint": "用于生成智能回复的聊天服务提供商",
+        "default": "default"
+      },
+      "Use_Framework_Personality": {
+        "description": "使用框架人格系统",
+        "type": "bool",
+        "hint": "插件将使用 AstrBot 框架配置的人格进行回复",
+        "default": true
+      }
+    }
+  },
+  "Output_Settings": {
+    "description": "输出设置",
+    "type": "object",
+    "hint": "语音识别结果的输出配置",
+    "items": {
+      "Console_Output": {
+        "description": "是否在控制台输出",
+        "type": "bool",
+        "hint": "如果为true，则在控制台输出语音识别结果",
+        "default": true
+      },
+      "Show_Recognition_Result": {
+        "description": "是否显示识别结果",
+        "type": "bool",
+        "hint": "如果为true，则向用户显示语音识别的文本结果",
+        "default": true
+      },
+      "Result_Format": {
+        "description": "识别结果显示格式",
+        "type": "string",
+        "hint": "语音识别结果的显示格式",
+        "default": "🗣️ 语音识别结果:\n{text}"
+      }
+    }
+  },
+  "Processing_Config": {
+    "description": "处理配置",
+    "type": "object",
+    "hint": "语音处理相关配置",
+    "items": {
+      "Processing_Timeout": {
+        "description": "处理超时时间",
+        "type": "int",
+        "hint": "语音处理超时时间，单位为秒",
+        "default": 30
+      },
+      "Retry_Count": {
+        "description": "重试次数",
+        "type": "int",
+        "hint": "语音识别失败时的重试次数",
+        "default": 2
+      },
+      "Enable_Error_Notification": {
+        "description": "是否启用错误通知",
+        "type": "bool",
+        "hint": "如果为true，则在处理失败时向用户发送错误通知",
+        "default": true
+      }
+    }
+  }
+}
