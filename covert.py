@@ -6,6 +6,14 @@ from pathlib import Path
 from pydub import AudioSegment
 from astrbot.api import logger
 
+# 检查 silk-python 库是否可用
+try:
+    import silk
+    SILK_AVAILABLE = True
+except ImportError:
+    SILK_AVAILABLE = False
+    silk = None
+
 
 class AudioConverter:
     """音频格式转换工具类 - Windows兼容"""
