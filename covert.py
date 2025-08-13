@@ -366,13 +366,13 @@ class AudioConverter:
 
     def _convert_amr_with_ffmpeg(self, amr_path: str, output_path: str):
         """使用FFmpeg转换AMR - 同步包装器，保持向后兼容"""
-        # 如果在异步上下文中，使用异步版本
+        # 检查是否在异步上下文中
         try:
             loop = asyncio.get_running_loop()
-            # 在异步上下文中，创建任务运行异步版本
-            return asyncio.create_task(self._convert_amr_with_ffmpeg_async(amr_path, output_path))
+            # 在异步上下文中，抛出异常提示使用异步版本
+            raise RuntimeError("在异步上下文中请直接使用 _convert_amr_with_ffmpeg_async 方法")
         except RuntimeError:
-            # 如果不在异步上下文中，使用异步方式运行
+            # 不在异步上下文中，使用 asyncio.run 运行异步版本
             return asyncio.run(self._convert_amr_with_ffmpeg_async(amr_path, output_path))
 
     def _convert_amr_with_fallback(self, amr_path: str, output_path: str):
@@ -466,13 +466,13 @@ class AudioConverter:
 
     def _convert_silk_with_ffmpeg(self, silk_path: str, output_path: str):
         """使用FFmpeg转换SILK格式 - 同步包装器，保持向后兼容"""
-        # 如果在异步上下文中，使用异步版本
+        # 检查是否在异步上下文中
         try:
             loop = asyncio.get_running_loop()
-            # 在异步上下文中，创建任务运行异步版本
-            return asyncio.create_task(self._convert_silk_with_ffmpeg_async(silk_path, output_path))
+            # 在异步上下文中，抛出异常提示使用异步版本
+            raise RuntimeError("在异步上下文中请直接使用 _convert_silk_with_ffmpeg_async 方法")
         except RuntimeError:
-            # 如果不在异步上下文中，使用异步方式运行
+            # 不在异步上下文中，使用 asyncio.run 运行异步版本
             return asyncio.run(self._convert_silk_with_ffmpeg_async(silk_path, output_path))
 
     def _convert_silk_fallback(self, silk_path: str, output_path: str) -> str:

@@ -89,7 +89,8 @@ class VoiceFileResolver:
                 possible_paths = await self._search_file_in_astrbot_dirs(voice.file)
                 if possible_paths:
                     logger.info(f"在AstrBot目录中找到文件: {possible_paths}")
-                    return possible_paths  # 返回第一个匹配项
+                    return possible_paths[0]  # 修复：返回第一个匹配项而不是整个列表
+
             
             raise original_error
 
