@@ -23,7 +23,7 @@ from astrbot.core.utils.astrbot_path import get_astrbot_data_path
 from astrbot.core.utils.io import download_image_by_url
 from .covert import AudioConverter  # 导入音频转换工具类
 
-@register("voice_to_text", "NickMo", "语音转文字智能回复插件", "1.0.0", "")
+@register("astrbot_plugin_voice_to_text", "NickMo", "语音转文字智能回复插件", "1.0.0", "")
 class VoiceToTextPlugin(star.Star):
     """语音转文字智能回复插件 - 集成音频转换功能"""
 
