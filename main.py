@@ -325,14 +325,13 @@ class VoiceToTextPlugin(star.Star):
                         context = []
 
             # 构造提示词 - 移除自定义system_prompt，让框架使用配置的人格
-            prompt = f"用户通过语音说了: {text}\n请自然地回应用户的语音内容。"
+            prompt = f"用户通过语音说了: {text}\n"
 
-            # 直接调用官方LLM接口生成回复 - 不传递system_prompt，使用框架人格
+            # 直接调用官方LLM接口生成回复 - 完全使用框架人格和对话上下文
             yield event.request_llm(
                 prompt=prompt,
                 session_id=curr_cid,
-                contexts=context,
-                conversation=conversation
+                conversation=conversation  # 只传递conversation，让框架处理上下文和人格
             )
 
         except Exception as e:
