@@ -2,8 +2,6 @@
 
 一个功能强大且高度集成的AstrBot插件，支持多种音频格式的语音识别，并能够自动生成符合框架人格的智能回复。
 
-# 注意注意！特别注意！不管你的怎么部署的astrbot框架，docker容器也好，直接丢服务器上的也好，都要能访问到 ffmpeg 指令，如何安装配置 ffmpeg 请往下看！插件里写了各个系统环境常用的 ffmpeg 路径，不一定有你所安装的路径！所以说一定要看清楚！
-
 ## ✨ 核心特性
 
 ### 🎤 强大的语音处理能力
@@ -31,9 +29,15 @@
 ### 核心组件
 1. **VoiceToTextPlugin**: 主插件类，负责消息监听和流程控制
 2. **AudioConverter**: 音频格式转换工具类，支持多种转换方案
-3. **语音文件获取系统**: 10种备用方法确保文件获取成功率
+3. **VoiceFileResolver**: 语音文件路径解析器，封装10种文件获取策略
 4. **STT集成**: 直接调用AstrBot框架的STT提供商
 5. **LLM集成**: 使用框架的人格系统进行智能回复
+
+### 架构设计原则
+- **模块化设计**: 各组件职责单一，低耦合高内聚
+- **DRY原则**: 消除代码重复，统一封装文件解析逻辑
+- **容错机制**: 多重备用方案，确保系统稳定性
+- **异步处理**: 全异步架构，提升并发处理能力
 
 ### 处理流程
 ```
@@ -50,10 +54,12 @@ LLM智能回复 → 临时文件清理
 - **操作系统**: Windows/Linux/macOS
 
 ### 必要依赖
-- `aiohttp>=3.8.0`: 异步HTTP客户端
-- `pydub>=0.25.1`: 音频处理库
-- `ffmpeg-python>=0.2.0`: FFmpeg Python接口
-- ~~`silk-python>=1.0.0`~~: ~~SILK格式支持~~ (已废弃，现使用FFmpeg处理SILK格式)
+- `aiohttp`: 异步HTTP客户端，用于下载语音文件
+- `pydub`: 音频处理库，用于音频格式转换
+- `certifi`: SSL证书验证，确保HTTPS连接安全
+- `pilk`: SILK格式解码库，作为FFmpeg的备用方案
+- ~~`ffmpeg-python`~~: ~~FFmpeg Python接口~~ (代码中直接调用FFmpeg可执行文件，无需此库)
+- ~~`silk-python`~~: ~~SILK格式支持~~ (已废弃，现使用FFmpeg+pilk处理SILK格式)
 
 ### 系统工具依赖
 
@@ -198,9 +204,18 @@ cp -r VoiceToTextPlugin_by_nickmo/ /path/to/astrbot/packages/
 # 进入插件目录
 cd packages/VoiceToTextPlugin_by_nickmo/
 
-# 安装依赖
+# 安装Python依赖
 pip install -r requirements.txt
+
+# 或者手动安装核心依赖
+pip install aiohttp>=3.8.0 pydub>=0.25.1 certifi>=2021.10.8 pilk>=0.2.3
 ```
+
+**依赖说明**:
+- **aiohttp**: 用于异步下载语音文件，支持HTTPS和代理
+- **pydub**: 核心音频处理库，支持多种格式转换
+- **certifi**: 提供SSL证书包，确保HTTPS连接安全性
+- **pilk**: SILK格式专用解码库，处理QQ语音等特殊格式
 
 ### 3. AstrBot配置
 在AstrBot管理面板中配置：
@@ -323,27 +338,48 @@ pip install -r requirements.txt
 
 ## 🔧 框架集成
 
+### 核心架构设计
+插件采用模块化设计，主要由以下组件构成：
+
+- **VoiceToTextPlugin**: 主插件类，集成AstrBot事件处理
+- **AudioConverter**: 音频转换工具类，支持多格式处理
+- **VoiceFileResolver**: 语音文件解析器，10种获取策略
+
 ### STT集成
 ```python
-# 获取当前STT提供商
+# 直接调用AstrBot框架STT提供商
 stt_provider = self.context.get_using_stt_provider()
-
-# 调用语音识别
 result = await stt_provider.get_text(audio_file_path)
 ```
 
 ### LLM集成
 ```python
-# 获取当前LLM提供商(已配置人格)
-llm_provider = self.context.get_using_provider()
-
-# 生成智能回复(自动使用框架人格)
+# 使用框架人格系统生成回复
 yield event.request_llm(
-    prompt=prompt,
-    session_id=session_id,
+    prompt=f"用户通过语音说了: {text}\n请自然地回应用户的语音内容。",
+    session_id=curr_cid,
     contexts=context,
     conversation=conversation
 )
+```
+
+### 音频处理流程
+```python
+# 1. 文件获取 - 使用VoiceFileResolver
+original_file_path = await self.voice_file_resolver.resolve_voice_file_path(voice)
+
+# 2. 格式检测与转换
+audio_format = self.audio_converter.detect_audio_format(original_file_path)
+if needs_conversion:
+    converted_path = await self.convert_audio_file_with_retry(original_file_path)
+
+# 3. 语音识别
+transcribed_text = await self.call_official_stt(final_file_path)
+
+# 4. 智能回复 (可选)
+if self.enable_chat_reply and self.should_generate_reply(event):
+    async for reply in self.call_official_chatllm(event, transcribed_text):
+        yield reply
 ```
 
 ### 人格系统
