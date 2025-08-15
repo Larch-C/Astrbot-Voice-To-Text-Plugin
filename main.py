@@ -433,12 +433,11 @@ class VoiceToTextPlugin(star.Star):
                 conversation = await self.context.conversation_manager.get_conversation(
                     event.unified_msg_origin, curr_cid
                 )
-                if conversation:
-                    import json
-                    try:
-                        context = json.loads(conversation.history)
-                    except json.JSONDecodeError:
-                        context = []
+            if conversation:
+                try:
+                    context = json.loads(conversation.history)
+                except json.JSONDecodeError:
+                    context = []
 
             # 构造提示词 - 移除自定义system_prompt，让框架使用配置的人格
             prompt = f"用户通过语音说了: {text}\n"

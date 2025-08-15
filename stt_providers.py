@@ -295,9 +295,13 @@ class STTProviderManager:
                     # Deepgram返回格式
                     channels = result.get("results", {}).get("channels", [])
                     if channels and len(channels) > 0:
-                        alternatives = channels.get("alternatives", [])
+                        # channels是列表，需要取第一个元素
+                        first_channel = channels[0]
+                        alternatives = first_channel.get("alternatives", [])
                         if alternatives and len(alternatives) > 0:
-                            transcript = alternatives.get("transcript", "")
+                            # alternatives也是列表，需要取第一个元素
+                            first_alternative = alternatives
+                            transcript = first_alternative.get("transcript", "")
                             if transcript:
                                 logger.info("Deepgram STT识别成功")
                                 return transcript.strip()
