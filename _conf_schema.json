@@ -4,11 +4,23 @@
     "type": "object",
     "hint": "语音识别服务提供商配置",
     "items": {
-      "STT_Provider": {
-        "description": "语音转文字服务提供商",
+      "STT_Source": {
+        "description": "STT服务来源",
         "type": "string",
-        "hint": "选择语音识别服务提供商",
-        "default": "astrbot_builtin"
+        "hint": "选择语音转文字服务的来源：使用AstrBot框架配置的STT服务 或 使用插件独立配置的STT API",
+        "default": "framework",
+        "enum": ["framework", "plugin"],
+        "enum_descriptions": ["使用AstrBot框架配置的STT服务", "使用插件独立配置的STT API"]
+      },
+      "Framework_STT_Provider_Name": {
+        "description": "框架STT提供商名字",
+        "type": "string",
+        "hint": "当选择'framework'时，指定使用哪个框架STT提供商。留空则使用框架默认的STT提供商",
+        "default": "",
+        "condition": {
+          "field": "Voice_Recognition.STT_Source",
+          "value": "framework"
+        }
       },
       "Enable_Voice_Processing": {
         "description": "是否启用语音消息处理",
@@ -44,37 +56,37 @@
       "Group_Recognition_Whitelist": {
         "description": "群聊语音识别白名单",
         "type": "list",
-        "items": {"type": "string"},
         "hint": "指定允许进行语音识别的群号列表，为空则对所有群聊生效",
         "default": []
       },
       "Group_Reply_Whitelist": {
         "description": "群聊语音回复白名单",
         "type": "list",
-        "items": {"type": "string"},
         "hint": "指定允许进行语音回复的群号列表，为空则对所有群聊生效",
         "default": []
       },
       "Group_Recognition_Blacklist": {
         "description": "群聊语音识别黑名单",
         "type": "list",
-        "items": {"type": "string"},
         "hint": "指定禁止进行语音识别的群号列表",
         "default": []
       },
       "Group_Reply_Blacklist": {
         "description": "群聊语音回复黑名单",
         "type": "list",
-        "items": {"type": "string"},
         "hint": "指定禁止进行语音回复的群号列表",
         "default": []
       }
     }
   },
   "STT_API_Config": {
-    "description": "兼容OpenAI格式的语音转文字API配置",
+    "description": "插件独立STT API配置",
     "type": "object",
-    "hint": "支持OpenAI Whisper及其他兼容OpenAI格式的语音转文字服务提供商",
+    "hint": "当STT服务来源选择'plugin'时显示。支持OpenAI Whisper及其他兼容OpenAI格式的语音转文字服务提供商",
+    "condition": {
+      "field": "Voice_Recognition.STT_Source",
+      "value": "plugin"
+    },
     "items": {
       "API_Key": {
         "description": "API密钥",
@@ -84,28 +96,107 @@
       },
       "API_Base_URL": {
         "description": "API基础URL",
-        "type": "string",
-        "hint": "语音转文字服务的API基础URL，支持OpenAI、Groq、Deepgram等兼容服务",
+        "type": "string", 
+        "hint": "语音转文字服务的API基础URL，会根据选择的提供商自动设置推荐值",
         "default": "https://api.openai.com/v1"
       },
       "Model": {
         "description": "语音识别模型",
         "type": "string",
-        "hint": "语音识别模型名称，如：whisper-1 (OpenAI)、whisper-large-v3 (Groq)、nova-2 (Deepgram)等",
+        "hint": "语音识别模型名称，请根据所选提供商填写对应的模型名称。例如：whisper-1、whisper-large-v3、nova-2、speech-01 等",
         "default": "whisper-1"
       },
       "Provider_Type": {
-        "description": "服务提供商类型",
+        "description": "STT服务提供商",
         "type": "string",
-        "hint": "选择语音转文字服务提供商：openai、groq、deepgram、azure、其他兼容服务",
-        "default": "openai"
+        "hint": "选择具体的语音转文字服务提供商，每个提供商有不同的API格式和特性",
+        "default": "openai",
+        "enum": [
+          "openai",
+          "groq", 
+          "deepgram",
+          "azure",
+          "siliconflow",
+          "minimax",
+          "volcengine",
+          "tencent",
+          "baidu",
+          "custom",
+          "other"
+        ],
+        "enum_descriptions": [
+          "OpenAI Whisper API - 官方Whisper服务",
+          "Groq - 高速Whisper推理服务",
+          "Deepgram - 专业语音识别服务", 
+          "Azure Speech Services - 微软语音服务",
+          "SiliconFlow - 硅基流动语音识别服务",
+          "MiniMax - 海螺AI语音服务",
+          "VolcEngine - 火山引擎语音服务",
+          "Tencent - 腾讯云语音识别",
+          "Baidu - 百度语音识别",
+          "自定义 - 其他兼容OpenAI格式的服务",
+          "其他服务商 - 完全自定义请求格式"
+        ]
       },
       "Custom_Headers": {
         "description": "自定义请求头",
         "type": "object",
-        "hint": "某些服务提供商可能需要的额外请求头参数",
+        "hint": "某些服务提供商可能需要的额外请求头参数。支持动态变量：{api_key}、{model}等",
         "default": {},
         "items": {}
+      },
+      "Custom_Request_Body": {
+        "description": "自定义请求体模板",
+        "type": "object",
+        "hint": "当选择'其他服务商'时，自定义API请求体格式。支持变量：{audio_base64}、{model}、{api_key}等",
+        "default": {},
+        "condition": {
+          "field": "STT_API_Config.Provider_Type",
+          "value": "other"
+        },
+        "items": {}
+      },
+      "Custom_Endpoint": {
+        "description": "自定义API端点",
+        "type": "string",
+        "hint": "当选择'其他服务商'时，指定API的具体端点路径，如：/v1/audio/transcribe",
+        "default": "/audio/transcriptions",
+        "condition": {
+          "field": "STT_API_Config.Provider_Type",
+          "value": "other"
+        }
+      },
+      "Custom_Request_Method": {
+        "description": "请求方法",
+        "type": "string",
+        "hint": "HTTP请求方法",
+        "default": "POST",
+        "enum": ["POST", "PUT", "PATCH"],
+        "condition": {
+          "field": "STT_API_Config.Provider_Type",
+          "value": "other"
+        }
+      },
+      "Custom_Content_Type": {
+        "description": "请求内容类型",
+        "type": "string",
+        "hint": "请求的Content-Type类型",
+        "default": "multipart/form-data",
+        "enum": ["multipart/form-data", "application/json", "application/octet-stream"],
+        "condition": {
+          "field": "STT_API_Config.Provider_Type",
+          "value": "other"
+        }
+      },
+      "Custom_Response_Path": {
+        "description": "响应文本提取路径",
+        "type": "string",
+        "hint": "从API响应JSON中提取文本的路径，如：result.text 或 data.transcript",
+        "default": "text",
+        "condition": {
+          "field": "STT_API_Config.Provider_Type",
+          "value": "other"
+        }
       }
     }
   },

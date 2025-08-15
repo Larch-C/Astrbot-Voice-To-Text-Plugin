@@ -30,10 +30,11 @@
 
 ### 核心组件
 1. **VoiceToTextPlugin**: 主插件类，负责消息监听和流程控制
-2. **AudioConverter**: 音频格式转换工具类，支持多种转换方案
-3. **VoiceFileResolver**: 语音文件路径解析器，封装10种文件获取策略
-4. **STT集成**: 直接调用AstrBot框架的STT提供商
-5. **LLM集成**: 使用框架的人格系统进行智能回复
+2. **AudioConverter**: 音频格式转换工具类，支持PyDub、FFmpeg等多种转换方案
+3. **VoiceFileResolver**: 语音文件路径解析器，提供10种备用文件获取策略
+4. **群聊权限管理**: 支持白名单/黑名单的精细化权限控制
+5. **STT集成**: 直接调用AstrBot框架的STT提供商
+6. **LLM集成**: 使用框架的人格系统进行智能回复
 
 ### 架构设计原则
 - **模块化设计**: 各组件职责单一，低耦合高内聚
@@ -219,88 +220,316 @@ pip install aiohttp>=3.8.0 pydub>=0.25.1 certifi>=2021.10.8 pilk>=0.2.3
 - **certifi**: 提供SSL证书包，确保HTTPS连接安全性
 - **pilk**: SILK格式专用解码库，处理QQ语音等特殊格式
 
-### 3. AstrBot配置
-在AstrBot管理面板中配置：
+### 3. STT服务配置选择
 
-#### STT服务提供商
-- 支持 OpenAI Whisper API
-- 支持 Groq (更快的Whisper推理)
-- 支持 Deepgram (实时语音识别)
-- 支持 Azure Speech Services
-- 支持其他兼容 OpenAI 格式的语音转文字服务
+插件现在支持两种STT服务来源：
 
-#### ChatLLM提供商
-- 配置任意支持的LLM提供商(OpenAI、Claude、Gemini等)
-- 设置合适的人格配置
+#### 🔧 方式一：使用AstrBot框架STT (推荐)
+- 在AstrBot管理面板中配置STT服务提供商
+- 插件配置中选择 `STT_Source` 为 `framework`
+- 无需额外配置，直接使用框架统一管理的STT服务
+
+#### 🔌 方式二：使用插件独立STT API
+- 插件配置中选择 `STT_Source` 为 `plugin`
+- 支持10+主流STT提供商，每个都有专门优化的API格式
 
 ### 4. 插件配置
-通过AstrBot Web界面配置插件参数：
 
-#### 基础配置示例
+#### 基础配置
 ```json
 {
-  "enable_chat_reply": true,        // 启用智能回复
-  "console_output": true,           // 控制台输出识别结果
-  "enable_audio_conversion": true,  // 启用音频格式转换
-  "max_audio_size_mb": 25          // 文件大小限制(MB)
-}
-```
-
-#### STT API 配置示例
-
-**OpenAI Whisper 配置:**
-```json
-{
-  "STT_API_Config": {
-    "API_Key": "sk-your-openai-api-key",
-    "API_Base_URL": "https://api.openai.com/v1",
-    "Model": "whisper-1",
-    "Provider_Type": "openai"
+  "Voice_Recognition": {
+    "STT_Source": "framework",           // STT服务来源: framework 或 plugin
+    "Enable_Voice_Processing": true,     // 是否启用语音消息处理
+    "Max_Audio_Size_MB": 25             // 文件大小限制(MB)
+  },
+  "Chat_Reply": {
+    "Enable_Chat_Reply": true,          // 启用智能回复
+    "Use_Framework_Personality": true   // 使用框架人格系统
+  },
+  "Output_Settings": {
+    "Console_Output": true,             // 控制台输出识别结果
+    "Show_Recognition_Result": true     // 向用户显示识别结果
   }
 }
 ```
 
-**Groq 配置 (更快的 Whisper 推理):**
+#### STT提供商配置（仅当STT_Source为plugin时显示）
+
+##### 🚀 高速推理服务
+**Groq - 超快Whisper推理**
 ```json
 {
   "STT_API_Config": {
+    "Provider_Type": "groq",
     "API_Key": "gsk_your-groq-api-key",
-    "API_Base_URL": "https://api.groq.com/openai/v1",
-    "Model": "whisper-large-v3",
-    "Provider_Type": "groq"
+    "Model": "whisper-large-v3"
   }
 }
 ```
 
-**Deepgram 配置:**
+**OpenAI Whisper - 官方服务**
 ```json
 {
   "STT_API_Config": {
-    "API_Key": "your-deepgram-api-key",
-    "API_Base_URL": "https://api.deepgram.com/v1",
-    "Model": "nova-2",
+    "Provider_Type": "openai", 
+    "API_Key": "sk-your-openai-api-key",
+    "Model": "whisper-1"
+  }
+}
+```
+
+##### 🇨🇳 国内优化服务
+**SiliconFlow - 硅基流动**
+```json
+{
+  "STT_API_Config": {
+    "Provider_Type": "siliconflow",
+    "API_Key": "sk-your-siliconflow-key",
+    "Model": "FunAudioLLM/SenseVoiceSmall"
+  }
+}
+```
+
+**MiniMax - 海螺AI**
+```json
+{
+  "STT_API_Config": {
+    "Provider_Type": "minimax",
+    "API_Key": "your-minimax-key",
+    "Model": "speech-01"
+  }
+}
+```
+
+##### 🏢 企业级服务
+**Deepgram - 专业语音识别**
+```json
+{
+  "STT_API_Config": {
     "Provider_Type": "deepgram",
+    "API_Key": "your-deepgram-key",
+    "Model": "nova-2"
+  }
+}
+```
+
+**Azure Speech Services**
+```json
+{
+  "STT_API_Config": {
+    "Provider_Type": "azure",
+    "API_Key": "your-azure-key",
+    "Model": "whisper"
+  }
+}
+```
+
+##### 📱 移动社交优化
+**VolcEngine - 火山引擎**、**Tencent - 腾讯云**、**Baidu - 百度智能云** 等国内服务商同样支持
+
+##### 🔧 自定义服务
+```json
+{
+  "STT_API_Config": {
+    "Provider_Type": "custom",
+    "API_Key": "your-custom-key",
+    "API_Base_URL": "https://your-api.example.com/v1",
+    "Model": "your-model-name"
+  }
+}
+```
+
+##### 🔥 完全自定义STT服务提供商 (other类型)
+
+当现有的STT提供商都无法满足需求时，可以使用"other"类型来对接任意第三方STT API。此功能提供完全的自定义能力，支持任意API格式。
+
+**基本配置示例:**
+```json
+{
+  "STT_API_Config": {
+    "Provider_Type": "other",
+    "API_Key": "your-custom-api-key",
+    "API_Base_URL": "https://your-stt-api.example.com",
+    "Model": "your-model-name",
+    "Custom_Endpoint": "/v1/audio/transcribe",
+    "Custom_Request_Method": "POST",
+    "Custom_Content_Type": "multipart/form-data",
+    "Custom_Response_Path": "result.text",
+    "Custom_Request_Body": {
+      "model": "{model}",
+      "language": "zh-CN"
+    },
     "Custom_Headers": {
-      "Content-Type": "audio/wav"
+      "X-API-Version": "v1.0",
+      "User-Agent": "AstrBot-Plugin"
     }
   }
 }
 ```
 
-**Azure Speech Services 配置:**
+**详细参数说明:**
+
+| 参数 | 类型 | 必填 | 说明 | 示例 |
+|------|------|------|------|------|
+| `Provider_Type` | string | ✅ | 固定值 "other" | `"other"` |
+| `API_Key` | string | ✅ | API认证密钥 | `"sk-1234567890abcdef"` |
+| `API_Base_URL` | string | ✅ | API服务器基础URL | `"https://api.example.com"` |
+| `Model` | string | ✅ | 语音识别模型名称 | `"whisper-v3"` |
+| `Custom_Endpoint` | string | ✅ | API端点路径 | `"/v1/audio/transcriptions"` |
+| `Custom_Request_Method` | string | ✅ | HTTP请求方法 | `"POST"` / `"PUT"` / `"PATCH"` |
+| `Custom_Content_Type` | string | ✅ | 请求内容类型 | 见下方详细说明 |
+| `Custom_Response_Path` | string | ✅ | 响应文本提取路径 | `"text"` / `"data.transcript"` |
+| `Custom_Request_Body` | object | ⭕ | 自定义请求体字段 | 见下方示例 |
+| `Custom_Headers` | object | ⭕ | 自定义请求头 | 见下方示例 |
+
+**支持的内容类型 (Custom_Content_Type):**
+
+1. **multipart/form-data** - 表单上传（推荐）
+   - 适用于大多数STT API
+   - 自动处理文件上传和表单字段
+
+2. **application/json** - JSON格式
+   - 音频数据会自动转换为base64编码
+   - 适用于REST风格的API
+
+3. **application/octet-stream** - 二进制流
+   - 直接发送音频二进制数据
+   - 适用于简单的二进制API
+
+**响应路径提取 (Custom_Response_Path) 示例:**
+
+```javascript
+// 如果API返回:
+{
+  "status": "success",
+  "data": {
+    "transcript": "你好，世界！",
+    "confidence": 0.98
+  }
+}
+// 设置 Custom_Response_Path 为: "data.transcript"
+
+// 如果API返回:
+{
+  "result": "语音识别结果文本"
+}
+// 设置 Custom_Response_Path 为: "result"
+
+// 如果API返回:
+{
+  "transcription": {
+    "results": [
+      {
+        "text": "识别的文本内容"
+      }
+    ]
+  }
+}
+// 设置 Custom_Response_Path 为: "transcription.results.0.text"
+```
+
+**变量替换支持:**
+
+在 `Custom_Request_Body` 中可以使用以下变量：
+
+- `{api_key}` - 替换为配置的API密钥
+- `{model}` - 替换为配置的模型名称  
+- `{audio_base64}` - 替换为base64编码的音频数据（仅JSON格式）
+
+**完整配置示例集合:**
+
+**示例1: 类似OpenAI格式的API**
 ```json
 {
   "STT_API_Config": {
-    "API_Key": "your-azure-speech-key",
-    "API_Base_URL": "https://your-region.api.cognitive.microsoft.com",
-    "Model": "whisper",
-    "Provider_Type": "azure",
+    "Provider_Type": "other",
+    "API_Key": "sk-custom123456",
+    "API_Base_URL": "https://stt-api.company.com",
+    "Model": "whisper-large",
+    "Custom_Endpoint": "/v1/audio/transcriptions",
+    "Custom_Request_Method": "POST",
+    "Custom_Content_Type": "multipart/form-data",
+    "Custom_Response_Path": "text",
+    "Custom_Request_Body": {
+      "model": "{model}",
+      "response_format": "json",
+      "language": "zh"
+    },
     "Custom_Headers": {
-      "Ocp-Apim-Subscription-Key": "your-subscription-key"
+      "Authorization": "Bearer {api_key}"
     }
   }
 }
 ```
+
+**示例2: JSON格式的企业内部API**
+```json
+{
+  "STT_API_Config": {
+    "Provider_Type": "other", 
+    "API_Key": "internal-api-token-xyz",
+    "API_Base_URL": "https://internal-stt.corp.com",
+    "Model": "corporate-v2.1",
+    "Custom_Endpoint": "/api/speech/recognize",
+    "Custom_Request_Method": "POST",
+    "Custom_Content_Type": "application/json",
+    "Custom_Response_Path": "data.recognition.transcript",
+    "Custom_Request_Body": {
+      "audio_data": "{audio_base64}",
+      "model_version": "{model}",
+      "options": {
+        "language": "zh-CN",
+        "enable_punctuation": true,
+        "sample_rate": 16000
+      }
+    },
+    "Custom_Headers": {
+      "X-Auth-Token": "{api_key}",
+      "Content-Type": "application/json",
+      "X-Client-Version": "astrbot-plugin-v1.0"
+    }
+  }
+}
+```
+
+**示例3: 简单的二进制流API**
+```json
+{
+  "STT_API_Config": {
+    "Provider_Type": "other",
+    "API_Key": "binary-api-key-789",
+    "API_Base_URL": "https://simple-stt.service.io",
+    "Model": "default",
+    "Custom_Endpoint": "/transcribe",
+    "Custom_Request_Method": "POST", 
+    "Custom_Content_Type": "application/octet-stream",
+    "Custom_Response_Path": "transcript",
+    "Custom_Headers": {
+      "X-API-Key": "{api_key}",
+      "Accept": "application/json"
+    }
+  }
+}
+```
+
+**调试和测试建议:**
+
+1. **逐步验证**: 先用简单的配置测试连通性
+2. **查看日志**: 使用 `/voice_debug` 命令查看详细请求信息
+3. **响应格式**: 先确认API的响应JSON结构，再配置提取路径
+4. **认证方式**: 不同API的认证方法可能不同，灵活使用Custom_Headers
+
+**常见问题解决:**
+
+| 问题 | 原因 | 解决方案 |
+|------|------|----------|
+| 401 Unauthorized | API密钥错误或认证方式不对 | 检查API_Key和Custom_Headers中的认证配置 |
+| 400 Bad Request | 请求格式不符合API要求 | 检查Custom_Request_Body和Content_Type设置 |
+| 提取文本失败 | 响应路径配置错误 | 检查Custom_Response_Path，确保路径正确 |
+| 连接超时 | API服务器响应慢或不可达 | 检查API_Base_URL和网络连接 |
+
+通过"other"类型的完全自定义配置，您可以对接任何STT服务提供商，实现真正的万能语音识别接口！
 
 ## 📚 配置选项详解
 
@@ -332,6 +561,8 @@ pip install aiohttp>=3.8.0 pydub>=0.25.1 certifi>=2021.10.8 pilk>=0.2.3
 ### 管理命令
 - `/voice_status`: 查看插件状态和配置信息
 - `/voice_test`: 测试STT和LLM提供商连接状态
+- `/voice_providers`: 查看所有支持的STT提供商详细信息
+- `/voice_debug`: 调试群聊权限配置
 
 ### 支持的音频格式
 - **原生支持**: MP3, WAV, FLAC, M4A, OGG
@@ -619,4 +850,3 @@ MIT License
 ---
 
 **注意**: 使用前请确保已正确配置AstrBot的STT和ChatLLM服务提供商。
-
