@@ -7,7 +7,7 @@
       "STT_Source": {
         "description": "STT服务来源",
         "type": "string",
-        "hint": "选择语音转文字服务的来源：使用AstrBot框架配置的STT服务 或 使用插件独立配置的STT API",
+        "hint": "选择语音转文字服务的来源：使用AstrBot框架配置的STT服务 或 使用插件独立配置的STT API，支持填写 framework 或 plugin",
         "default": "framework",
         "enum": ["framework", "plugin"],
         "enum_descriptions": ["使用AstrBot框架配置的STT服务", "使用插件独立配置的STT API"]
