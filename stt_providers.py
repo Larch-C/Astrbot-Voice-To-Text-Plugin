@@ -300,7 +300,7 @@ class STTProviderManager:
                         alternatives = first_channel.get("alternatives", [])
                         if alternatives and len(alternatives) > 0:
                             # alternatives也是列表，需要取第一个元素
-                            first_alternative = alternatives
+                            first_alternative = alternatives[0]
                             transcript = first_alternative.get("transcript", "")
                             if transcript:
                                 logger.info("Deepgram STT识别成功")
