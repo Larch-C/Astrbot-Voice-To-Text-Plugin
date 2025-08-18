@@ -51,7 +51,7 @@
         "description": "是否回复群聊语音",
         "type": "bool",
         "hint": "如果为true，则对群聊中的语音识别结果生成智能回复",
-        "default": false
+        "default": true
       },
       "Group_Recognition_Whitelist": {
         "description": "群聊语音识别白名单",

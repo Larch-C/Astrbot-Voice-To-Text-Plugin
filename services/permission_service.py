@@ -1,6 +1,7 @@
 """
 权限检查服务 - 统一处理群聊权限逻辑
 """
+from calendar import c
 from typing import Dict, List
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
@@ -25,15 +26,15 @@ class PermissionService:
         # 群聊权限配置
         group_settings = self.config.get("Group_Chat_Settings", {})
         self.enable_group_voice_recognition = group_settings.get("Enable_Group_Voice_Recognition", True)
-        self.enable_group_voice_reply = group_settings.get("Enable_Group_Voice_Reply", False)
+        self.enable_group_voice_reply = group_settings.get("Enable_Group_Voice_Reply", True) # 修改默认值为True
         self.group_recognition_whitelist = set(group_settings.get("Group_Recognition_Whitelist", []))
         self.group_reply_whitelist = set(group_settings.get("Group_Reply_Whitelist", []))
         self.group_recognition_blacklist = set(group_settings.get("Group_Recognition_Blacklist", []))
         self.group_reply_blacklist = set(group_settings.get("Group_Reply_Blacklist", []))
         
-        logger.info("权限检查服务初始化完成")
+        logger.info(f"权限检查服务初始化完成，Group_Chat_Permission: {self.group_reply_whitelist}") # 添加日志输出
     
-    def can_process_voice(self, event: AstrMessageEvent) -> bool:
+    async def can_process_voice(self, event: AstrMessageEvent) -> bool:
         """检查是否可以处理语音消息"""
         try:
             message_type = event.get_message_type()
@@ -46,7 +47,7 @@ class PermissionService:
             # 群聊消息需要检查权限
             if message_type == MessageType.GROUP_MESSAGE:
                 group_id = event.get_group_id()
-                return self._check_group_permission(group_id, "recognition")
+                return await self._check_group_permission(group_id, "recognition")
             
             # 其他消息类型不处理
             logger.debug(f"未知消息类型，不处理: {message_type}")
@@ -56,7 +57,7 @@ class PermissionService:
             logger.error(f"权限检查失败: {e}")
             return False
     
-    def can_generate_reply(self, event: AstrMessageEvent) -> bool:
+    async def can_generate_reply(self, event: AstrMessageEvent) -> bool:
         """检查是否可以生成智能回复"""
         try:
             message_type = event.get_message_type()
@@ -69,7 +70,8 @@ class PermissionService:
             # 群聊消息需要检查回复权限
             if message_type == MessageType.GROUP_MESSAGE:
                 group_id = event.get_group_id()
-                return self._check_group_permission(group_id, "reply")
+                can_reply = await self._check_group_permission(group_id, "reply")
+                return can_reply
             
             # 其他消息类型不回复
             logger.debug(f"未知消息类型，不生成回复: {message_type}")
@@ -78,7 +80,7 @@ class PermissionService:
         except Exception as e:
             logger.error(f"回复权限检查失败: {e}")
             return False
-    
+            
     @cache_result(ttl_seconds=60)  # 缓存1分钟
     async def _check_group_permission(self, group_id: str, action: str) -> bool:
         """
@@ -110,23 +112,30 @@ class PermissionService:
         
         # 权限检查逻辑
         if not enabled:
-            logger.debug(f"群聊语音{action}已禁用")
+            logger.debug(f"群聊ID: {group_id} - 语音{action}功能已禁用")
             return False
         
         # 黑名单检查（优先级最高）
         if group_id in blacklist:
-            logger.debug(f"群聊在{action}黑名单中: {group_id}")
+            logger.debug(f"群聊ID: {group_id} - 在{action}黑名单中")
             return False
-        
-        # 白名单检查（如果配置了白名单）
-        if whitelist and group_id not in whitelist:
-            logger.debug(f"群聊不在{action}白名单中: {group_id}")
-            return False
-        
-        logger.debug(f"群聊语音{action}权限检查通过: {group_id}")
-        return True
+
+        # 白名单检查
+        if whitelist: # 如果白名单不为空，则只允许白名单中的群聊
+            if group_id not in whitelist:
+                logger.info(f"群聊ID: {group_id} - 不在{action}白名单中")
+                return False
+            else:
+                logger.info(f"群聊ID: {group_id} - 在{action}白名单中")
+                logger.debug(f"群聊ID: {group_id} - 语音{action}权限检查通过")
+                return True
+        else: # 如果白名单为空，则对所有群聊生效（在黑名单中除外）
+            logger.info(f"群聊ID: {group_id} - {action}白名单为空，对所有群聊生效")
+            logger.debug(f"群聊ID: {group_id} - 语音{action}权限检查通过")
+            return True
+        return False
     
-    def get_permission_status(self, group_id: str = None) -> Dict:
+    async def get_permission_status(self, group_id: str = None) -> Dict:
         """获取权限状态信息"""
         status = {
             'group_voice_recognition_enabled': self.enable_group_voice_recognition,
@@ -141,8 +150,8 @@ class PermissionService:
         if group_id:
             status.update({
                 'current_group_id': group_id,
-                'can_recognize': self._check_group_permission(group_id, "recognition"),
-                'can_reply': self._check_group_permission(group_id, "reply")
+                'can_recognize': await self._check_group_permission(group_id, "recognition"),
+                'can_reply': await self._check_group_permission(group_id, "reply")
             })
         
         return status

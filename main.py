@@ -30,9 +30,14 @@ class VoiceToTextPlugin(star.Star):
         self.plugin_config = PluginConfig.create_default()
         
         # 基础配置
-        self.enable_chat_reply = self.config.get("enable_chat_reply", True)
-        self.console_output = self.config.get("console_output", True)
+        chat_reply_settings = self.config.get("Chat_Reply", {})
+        self.enable_chat_reply = chat_reply_settings.get("Enable_Chat_Reply", True)
+        self.console_output = self.config.get("Output_Settings", {}).get("Console_Output", True) # 修正console_output的获取路径
         
+        # 权限服务
+        logger.info(f"回复配置: {self.enable_chat_reply}")
+        logger.info(f"输出配置: {self.console_output}")
+
         # 初始化服务层
         self._initialize_services()
         
@@ -64,7 +69,7 @@ class VoiceToTextPlugin(star.Star):
         for comp in messages:
             if isinstance(comp, Record):
                 # 检查权限
-                if self.permission_service.can_process_voice(event):
+                if await self.permission_service.can_process_voice(event):
                     async for result in self._process_voice_message(event, comp):
                         yield result
                 else:
@@ -91,7 +96,7 @@ class VoiceToTextPlugin(star.Star):
                 logger.info(f"语音识别结果: {transcribed_text}")
             
             # 4. 生成智能回复
-            if self.enable_chat_reply and self.permission_service.can_generate_reply(event):
+            if self.enable_chat_reply and await self.permission_service.can_generate_reply(event):
                 async for reply in self._generate_intelligent_reply(event, transcribed_text):
                     yield reply
                     
@@ -171,7 +176,7 @@ class VoiceToTextPlugin(star.Star):
         try:
             # 获取各服务状态
             stt_status = self.stt_service.get_stt_status()
-            permission_status = self.permission_service.get_permission_status(event.get_group_id())
+            permission_status = await self.permission_service.get_permission_status(event.get_group_id())
             processing_status = self.voice_processing_service.get_processing_status()
             
             # 构建状态信息
@@ -239,8 +244,8 @@ class VoiceToTextPlugin(star.Star):
             # 测试权限服务
             group_id = event.get_group_id()
             if group_id:
-                can_process = self.permission_service.can_process_voice(event)
-                can_reply = self.permission_service.can_generate_reply(event)
+                can_process = await self.permission_service.can_process_voice(event)
+                can_reply = await self.permission_service.can_generate_reply(event)
                 test_results.append(f"✅ 权限检查: 识别={can_process}, 回复={can_reply}")
             else:
                 test_results.append("✅ 权限检查: 私聊消息")
@@ -275,7 +280,7 @@ class VoiceToTextPlugin(star.Star):
 
                 📊 服务详情:
                 - STT源: {self.stt_service.stt_source if hasattr(self, 'stt_service') else '未知'}
-                - 权限状态: {self.permission_service.get_permission_status(group_id) if hasattr(self, 'permission_service') else '未知'}
+                - 权限状态: {await self.permission_service.get_permission_status(group_id) if hasattr(self, 'permission_service') else '未知'}
 
                 🔧 重构改进:
                 - ✅ 单一职责原则
