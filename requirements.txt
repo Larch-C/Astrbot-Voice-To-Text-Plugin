@@ -2,5 +2,6 @@ aiohttp
 pydub
 certifi
 pilk
+audioop-lts
 # ffmpeg-python  # 未在代码中使用，已移除
 # silk-python    # 已废弃: SILK格式转换已改为使用FFmpeg实现，不再依赖此库

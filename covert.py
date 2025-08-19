@@ -6,7 +6,7 @@ import asyncio
 from pathlib import Path
 from pydub import AudioSegment
 from astrbot.api import logger
-import pilk
+# import pilk # 根据系统和库可用性动态导入
 import uuid
 # import silk  # 已弃用: SILK库转换已被FFmpeg替代
 
@@ -40,6 +40,15 @@ class AudioConverter:
             os.makedirs(self.temp_dir, exist_ok=True)
             
         logger.info(f"音频转换器初始化完成，临时目录: {self.temp_dir}")
+
+        # 检查pilk库是否可用
+        self.pilk_available = False
+        try:
+            import pilk
+            self.pilk_available = True
+            logger.info("pilk库已安装并可用。")
+        except ImportError:
+            logger.warning("pilk库未安装。SILK转换将优先尝试silk_v3_decoder.exe和FFmpeg。")
 
     def validate_file(self, file_path: str) -> bool:
         """验证文件是否存在且可读"""
@@ -245,47 +254,42 @@ class AudioConverter:
             # 使用FFmpeg直接转换SILK为MP3
             logger.info(f"开始使用FFmpeg转换SILK格式: {silk_path} -> {output_path}")
             
-            # 尝试FFmpeg转换SILK
-            try:
-                self._convert_silk_with_ffmpeg(silk_path, output_path)
-                logger.info(f"SILK转MP3成功: {silk_path} -> {output_path}")
-                return output_path
-            except Exception as ffmpeg_error:
-                logger.warning(f"FFmpeg转换SILK失败: {ffmpeg_error}")
-                
-                # 如果FFmpeg失败，尝试备用方法
-                logger.info("尝试备用SILK转换方法...")
-                try:
-                    return self._convert_silk_fallback(silk_path, output_path)
-                except Exception as fallback_error:
-                    logger.error(f"备用SILK转换方法也失败: {fallback_error}")
-                    raise Exception(f"所有SILK转换方法都失败: FFmpeg错误={ffmpeg_error}, 备用方法错误={fallback_error}")
+            # 定义转换方法列表，优先顺序：silk_v3_decoder.exe (Windows) -> FFmpeg -> pilk (如果可用) -> 其他备用
+            conversion_methods = []
+            if os.name == 'nt': # Windows系统优先尝试silk_v3_decoder.exe
+                conversion_methods.append(self._convert_silk_with_exe)
+            
+            conversion_methods.append(self._convert_silk_with_ffmpeg)
+            
+            if self.pilk_available: # 只有在pilk可用时才添加此方法
+                conversion_methods.append(self._convert_silk_with_pilk)
+            
+            conversion_methods.append(self._convert_silk_fallback)
 
-            # 注释：原有的silk库转换方法已被FFmpeg方法替代
-            # 以下是原有使用silk-python库的转换代码（已注释）：
-            # ================================================================
-            # # 先将SILK转为WAV，再转为MP3
-            # wav_temp = os.path.join(self.temp_dir, f"{Path(silk_path).stem}_temp.wav")
-            # 
-            # try:
-            #     import silk  # silk-python库
-            #     silk.decode(silk_path, wav_temp, 24000)  # 24kHz采样率
-            # 
-            #     # 将WAV转为MP3
-            #     audio = AudioSegment.from_wav(wav_temp)
-            #     audio.export(output_path, format="mp3", bitrate="128k")
-            # 
-            #     # 清理临时文件
-            #     if os.path.exists(wav_temp):
-            #         os.remove(wav_temp)
-            # 
-            #     logger.info(f"SILK转MP3成功: {silk_path} -> {output_path}")
-            #     return output_path
-            # 
-            # except ImportError:
-            #     logger.error("silk-python库未安装，无法处理SILK格式")
-            #     raise
-            # ================================================================
+            last_error = None
+            for i, method in enumerate(conversion_methods, 1):
+                try:
+                    logger.debug(f"尝试SILK转换方法 {i}/{len(conversion_methods)}")
+                    converted_path = method(silk_path, output_path)
+                    
+                    # 验证转换结果
+                    if os.path.exists(converted_path) and os.path.getsize(converted_path) > 0:
+                        logger.info(f"SILK转换方法 {i} 成功: {converted_path}")
+                        return converted_path
+                        
+                except Exception as e:
+                    last_error = e
+                    logger.warning(f"SILK转换方法 {i} 失败: {e}")
+                    # 清理可能产生的无效文件
+                    if os.path.exists(output_path):
+                        try:
+                            os.remove(output_path)
+                        except:
+                            pass
+                    continue
+            else:
+                # 所有方法都失败了
+                raise Exception(f"所有SILK转换方法都失败，最后错误: {last_error}")
 
         except Exception as e:
             logger.error(f"SILK转MP3失败: {e}")
@@ -565,16 +569,9 @@ class AudioConverter:
         logger.info(f"使用FFmpeg转换SILK成功: {ffmpeg_cmd}")
 
     def _convert_silk_fallback(self, silk_path: str, output_path: str) -> str:
-        """SILK格式备用转换方法 - 使用pilk库"""
+        """SILK格式备用转换方法 - 不依赖pilk或特定exe"""
         try:
-            # 方法1: 使用pilk库进行SILK解码（推荐方法）
-            try:
-                logger.info("尝试使用pilk库解码SILK格式")
-                return self._convert_silk_with_pilk(silk_path, output_path)
-            except Exception as e:
-                logger.debug(f"pilk解码失败: {e}")
-                
-            # 方法2: 尝试使用PyDub的通用解码器
+            # 方法1: 尝试使用PyDub的通用解码器
             try:
                 audio = AudioSegment.from_file(silk_path)
                 audio.export(output_path, format="mp3", bitrate="128k")
@@ -583,7 +580,7 @@ class AudioConverter:
             except Exception as e:
                 logger.debug(f"PyDub通用解码器失败: {e}")
                 
-            # 方法3: 尝试作为原始音频数据处理
+            # 方法2: 尝试作为原始音频数据处理
             try:
                 # 跳过SILK文件头，尝试解码音频数据
                 with open(silk_path, 'rb') as f:
@@ -831,3 +828,129 @@ class AudioConverter:
             logger.info("  Docker: 在Dockerfile中添加 RUN apt-get update && apt-get install -y ffmpeg")
             
         return None
+
+    def _find_silk_decoder_executable(self) -> str:
+        """
+        查找 silk_v3_decoder.exe 可执行文件
+        """
+        decoder_name = "silk_v3_decoder.exe"
+        # 优先在当前脚本所在目录查找
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        decoder_path = os.path.join(current_dir, decoder_name)
+        if os.path.isfile(decoder_path) and os.access(decoder_path, os.X_OK):
+            logger.info(f"在当前目录找到 silk_v3_decoder.exe: {decoder_path}")
+            return decoder_path
+        
+        # 其次在项目根目录查找
+        project_root = os.path.abspath(os.path.join(current_dir, os.pardir))
+        decoder_path = os.path.join(project_root, decoder_name)
+        if os.path.isfile(decoder_path) and os.access(decoder_path, os.X_OK):
+            logger.info(f"在项目根目录找到 silk_v3_decoder.exe: {decoder_path}")
+            return decoder_path
+
+        # 最后在PATH中查找
+        if shutil.which(decoder_name):
+            logger.info(f"在PATH中找到 silk_v3_decoder.exe: {shutil.which(decoder_name)}")
+            return shutil.which(decoder_name)
+            
+        logger.warning(f"未找到 {decoder_name} 可执行文件。请确保它在当前目录、项目根目录或系统PATH中。")
+        return None
+
+    def _convert_silk_with_exe(self, silk_path: str, output_mp3_path: str) -> str:
+        """
+        使用 silk_v3_decoder.exe 将 SILK 转换为 PCM，再用 FFmpeg 转换为 MP3。
+        仅在 Windows 系统下调用。
+        """
+        if os.name != 'nt':
+            raise Exception("此方法仅支持 Windows 系统。")
+
+        silk_decoder_exe = self._find_silk_decoder_executable()
+        if not silk_decoder_exe:
+            raise Exception("未找到 silk_v3_decoder.exe，无法进行转换。")
+
+        # 生成临时 PCM 文件路径
+        pcm_temp_path = os.path.join(self.temp_dir, f"{Path(silk_path).stem}_{uuid.uuid4().hex}.pcm")
+
+        try:
+            logger.info(f"开始使用 {silk_decoder_exe} 将 SILK 转换为 PCM: {silk_path} -> {pcm_temp_path}")
+            
+            # 调用 silk_v3_decoder.exe
+            # usage: silk_v3_decoder.exe in.bit out.pcm [settings]
+            cmd_decode = [
+                silk_decoder_exe,
+                os.path.normpath(silk_path),
+                os.path.normpath(pcm_temp_path),
+                "-Fs_API", "24000" # 假设输出采样率为24000Hz，与pilk保持一致
+            ]
+            
+            result_decode = subprocess.run(
+                cmd_decode,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=60.0,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+
+            if result_decode.returncode != 0:
+                stdout_str = result_decode.stdout.decode('utf-8', errors='ignore')[:1000]
+                stderr_str = result_decode.stderr.decode('utf-8', errors='ignore')[:1000]
+                error_msg = stderr_str or stdout_str or "未知错误"
+                logger.warning(f"silk_v3_decoder.exe 转换失败: {error_msg}")
+                return None # 返回None表示失败，不抛出异常
+            
+            logger.info(f"SILK 转换为 PCM 成功: {pcm_temp_path}")
+
+            # 检查生成的 PCM 文件是否存在且有效
+            if not os.path.exists(pcm_temp_path) or os.path.getsize(pcm_temp_path) == 0:
+                logger.warning("silk_v3_decoder.exe 未生成有效的 PCM 文件。")
+                return None # 返回None表示失败，不抛出异常
+
+            # 使用 FFmpeg 将 PCM 转换为 MP3
+            ffmpeg_cmd = self._find_ffmpeg_executable()
+            if not ffmpeg_cmd:
+                raise Exception("未找到 FFmpeg 可执行文件，无法将 PCM 转换为 MP3。")
+
+            logger.info(f"开始使用 FFmpeg 将 PCM 转换为 MP3: {pcm_temp_path} -> {output_mp3_path}")
+            
+            cmd_encode = [
+                ffmpeg_cmd,
+                '-f', 's16le',      # 输入格式：有符号16位小端
+                '-ar', '24000',     # 输入采样率：24kHz (与 silk_v3_decoder 输出一致)
+                '-ac', '1',         # 输入声道数：单声道
+                '-i', os.path.normpath(pcm_temp_path),
+                '-acodec', 'libmp3lame',
+                '-ab', '128k',
+                '-y',               # 覆盖输出文件
+                os.path.normpath(output_mp3_path)
+            ]
+
+            result_encode = subprocess.run(
+                cmd_encode,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=60.0,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+
+            if result_encode.returncode != 0:
+                stdout_str = result_encode.stdout.decode('utf-8', errors='ignore')[:1000]
+                stderr_str = result_encode.stderr.decode('utf-8', errors='ignore')[:1000]
+                error_msg = stderr_str or stdout_str or "未知错误"
+                logger.warning(f"FFmpeg 将 PCM 转换为 MP3 失败: {error_msg}")
+                return None # 返回None表示失败，不抛出异常
+
+            logger.info(f"PCM 转换为 MP3 成功: {output_mp3_path}")
+            return output_mp3_path
+
+        except Exception as e:
+            logger.warning(f"使用 silk_v3_decoder.exe 转换 SILK 失败: {e}")
+            logger.debug(f"输入路径: {silk_path}, 输出路径: {pcm_temp_path}")  # 添加输入输出路径日志
+            return None # 返回None表示失败，不抛出异常
+        finally:
+            # 清理临时 PCM 文件
+            if os.path.exists(pcm_temp_path):
+                try:
+                    os.remove(pcm_temp_path)
+                    logger.debug(f"清理临时 PCM 文件: {pcm_temp_path}")
+                except Exception as e:
+                    logger.warning(f"清理临时 PCM 文件失败: {e}")

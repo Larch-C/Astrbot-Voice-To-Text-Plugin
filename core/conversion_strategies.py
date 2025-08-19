@@ -22,6 +22,8 @@ from ..exceptions import AudioConversionError, FFmpegNotFoundError
 from ..utils.decorators import async_operation_handler, retry_on_failure
 from .ffmpeg_manager import FFmpegManager
 from .temp_file_manager import TempFileManager
+from ..covert import AudioConverter # 导入 covert.py 中的 AudioConverter
+import os # 确保os模块已导入
 
 
 class ConversionStrategy(ABC):
@@ -104,8 +106,8 @@ class PyDubStrategy(ConversionStrategy):
             # 如果是FFmpeg相关错误，提供更好的错误信息
             error_msg = str(e)
             if 'ffprobe' in error_msg or 'ffmpeg' in error_msg:
-                logger.warning(f"PyDub转换失败(FFmpeg相关): {error_msg}")
-                raise AudioConversionError(f"PyDub转换失败，FFmpeg不可用: {error_msg}") from e
+                logger.warning(f"PyDub转换失败(FFmpeg相关) - 尝试下一种策略: {error_msg}")
+                return False # FFmpeg相关错误时返回False，不抛出异常
             else:
                 logger.error(f"PyDub转换失败: {error_msg}")
                 raise AudioConversionError(f"PyDub转换失败: {error_msg}") from e
@@ -152,12 +154,56 @@ class FFmpegStrategy(ConversionStrategy):
             await self.ffmpeg_manager.convert_audio_async(input_path, output_path)
             return True
         except Exception as e:
-            logger.error(f"FFmpeg转换失败: {e}")
-            raise AudioConversionError(f"FFmpeg转换失败: {str(e)}") from e
+            logger.info(f"FFmpeg转换失败 - 尝试下一种策略: {e}")
+            # raise AudioConversionError(f"FFmpeg转换失败: {str(e)}") from e
+            return False
+
+class SilkDecoderExeStrategy(ConversionStrategy):
+    """
+    使用 silk_v3_decoder.exe 将 SILK 转换为 PCM，再用 FFmpeg 转换为 MP3 的策略。
+    仅在 Windows 系统下可用。
+    """
+    def __init__(self, config: AudioProcessingConfig = None):
+        super().__init__(config)
+        self.audio_converter_instance = AudioConverter() # 使用 covert.py 中的 AudioConverter
+    
+    @property
+    def strategy_name(self) -> str:
+        return "silk_v3_decoder.exe转换策略"
+    
+    async def can_handle(self, input_format: str, output_format: str) -> bool:
+        """检查是否能处理SILK转换，并确保是Windows系统且exe存在"""
+        if os.name != 'nt':
+            return False
+        
+        if input_format == 'silk' and output_format == 'mp3':
+            # 检查 silk_v3_decoder.exe 是否存在
+            try:
+                self.audio_converter_instance._find_silk_decoder_executable()
+                return True
+            except Exception:
+                return False
+        return False
+    
+    @async_operation_handler("silk_v3_decoder.exe音频转换")
+    @retry_on_failure(max_retries=1) # 外部exe调用，重试次数少一点
+    async def convert(self, input_path: str, output_path: str) -> bool:
+        """使用 silk_v3_decoder.exe 进行转换"""
+        try:
+            # 直接调用 covert.py 中实现的 _convert_silk_with_exe 方法
+            converted_path = await asyncio.to_thread(
+                self.audio_converter_instance._convert_silk_with_exe, 
+                input_path, 
+                output_path
+            )
+            return converted_path == output_path
+        except Exception as e:
+            logger.error(f"silk_v3_decoder.exe 转换失败: {e}")
+            raise AudioConversionError(f"silk_v3_decoder.exe 转换失败: {str(e)}") from e
 
 
 class SilkStrategy(ConversionStrategy):
-    """专门处理SILK格式的转换策略"""
+    """专门处理SILK格式的转换策略 (使用pilk库)"""
     
     def __init__(self, config: AudioProcessingConfig = None):
         super().__init__(config)
@@ -165,7 +211,7 @@ class SilkStrategy(ConversionStrategy):
     
     @property
     def strategy_name(self) -> str:
-        return "SILK转换策略"
+        return "SILK转换策略 (pilk)"
     
     async def can_handle(self, input_format: str, output_format: str) -> bool:
         """检查是否能处理SILK转换"""
@@ -173,7 +219,7 @@ class SilkStrategy(ConversionStrategy):
             return False
         return input_format == 'silk' and output_format == 'mp3'
     
-    @async_operation_handler("SILK音频转换")
+    @async_operation_handler("SILK音频转换 (pilk)")
     @retry_on_failure(max_retries=2)
     async def convert(self, input_path: str, output_path: str) -> bool:
         """转换SILK为MP3"""
@@ -184,8 +230,8 @@ class SilkStrategy(ConversionStrategy):
                 await self._convert_pcm_to_mp3(pcm_temp, output_path)
             return True
         except Exception as e:
-            logger.error(f"SILK转换失败: {e}")
-            raise AudioConversionError(f"SILK转换失败: {str(e)}") from e
+            logger.error(f"SILK转换失败 (pilk): {e}")
+            raise AudioConversionError(f"SILK转换失败 (pilk): {str(e)}") from e
     
     async def _decode_silk_to_pcm(self, silk_path: str, pcm_path: str):
         """使用pilk解码SILK为PCM"""
@@ -454,6 +500,7 @@ class ConversionStrategyManager:
         
         # 初始化所有策略
         self.strategies = [
+            SilkDecoderExeStrategy(self.config), # Windows系统下优先使用 silk_v3_decoder.exe
             FFmpegStrategy(self.config),
             PyDubStrategy(self.config),
             SilkStrategy(self.config),
