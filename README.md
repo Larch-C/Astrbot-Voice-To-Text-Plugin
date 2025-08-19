@@ -7,7 +7,7 @@
 https://github.com/kn007/silk-v3-decoder
 
 一个AstrBot插件，支持多种音频格式的语音识别，并能够自动生成符合框架人格的智能回复。
-
+## 使用本插件强烈建议配合 TTS 插件 https://github.com/muyouzhi6/astrabot_plugin_tts_emotion_router 使用 可实现按bot回复情绪使用不同的音色和语速进行全语音对话
 # 注意注意！特别注意！不管你的怎么部署的astrbot框架，docker容器也好，直接丢服务器上的也好，都要能访问到 ffmpeg 指令，如何安装配置 ffmpeg 请往下看！插件里写了各个系统环境常用的 ffmpeg 路径，不一定有你所安装的路径！所以说一定要看清楚！
 
 ## 📁 架构组织结构
@@ -915,3 +915,4 @@ MIT License
 ***
 
 **注意**: 使用前请确保已正确配置AstrBot的STT和ChatLLM服务提供商。
+
