@@ -20,13 +20,22 @@ class AudioConverter:
         self.format_detector = AudioFormatDetector(self.config.audio)
         self.temp_manager = TempFileManager(self.config.temp_file)
         
+        # 在初始化时创建并缓存策略管理器
+        from .factory import ComponentFactory
+        self._strategy_manager = ComponentFactory.create_conversion_strategy_manager(self.config)
+        
         logger.info("音频转换器重构版本初始化完成")
     
     def _get_strategy_manager(self):
         """使用工厂方法获取策略管理器，完全避免循环导入"""
-        # 动态导入工厂类并创建组件
-        from .factory import ComponentFactory
-        return ComponentFactory.create_conversion_strategy_manager(self.config)
+         """使用工厂方法获取策略管理器，完全避免循环导入"""
+        
+        if not self._strategy_manager:
+            # 动态导入工厂类并创建组件
+            from .factory import ComponentFactory
+            return ComponentFactory.create_conversion_strategy_manager(self.config)
+        
+        return self._strategy_manager
     
     @async_operation_handler("音频文件验证", log_performance=False)
     async def validate_audio_file(self, file_path: str) -> bool:

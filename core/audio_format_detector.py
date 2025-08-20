@@ -118,7 +118,7 @@ class AudioFormatDetector:
         """检查是否需要格式转换"""
         return not self.is_supported_format(format_name) and format_name not in ['invalid', 'unknown']
     
-    def get_format_info(self, file_path: str) -> Dict[str, any]:
+    async def get_format_info(self, file_path: str) -> Dict[str, any]:
         """获取音频文件的详细格式信息"""
         try:
             if not self.validate_file(file_path):
@@ -126,9 +126,8 @@ class AudioFormatDetector:
             
             file_size = os.path.getsize(file_path)
             
-            # 检测格式（使用异步方法的同步版本）
-            import asyncio
-            format_name = asyncio.run(self.detect_format(file_path))
+            # 检测格式
+            format_name = await self.detect_format(file_path)
             
             return {
                 'file_path': file_path,
