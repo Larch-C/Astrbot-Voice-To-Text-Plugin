@@ -97,16 +97,19 @@ class VoiceToTextPlugin(star.Star):
             if self.console_output:
                 logger.info(f"语音识别结果: {transcribed_text}")
             
+            await self._record_voice_to_history(event, transcribed_text)
+            logger.info(f"群聊语音已记录到历史: {event.get_group_id()}")
+
             # 4. 处理群聊语音记录
             # 如果是群聊消息且开启了群聊语音识别，将语音内容记录到历史中但不回复
             if (event.get_message_type() == MessageType.GROUP_MESSAGE and 
                 self.permission_service.enable_group_voice_recognition and
+                self.permission_service.enable_group_voice_reply is False and
                 await self.permission_service.can_process_voice(event)):
                 
-                await self._record_voice_to_history(event, transcribed_text)
                 # 阻止后续的 LLM 回复
                 event.stop_event()
-                logger.info(f"群聊语音已记录到历史: {event.get_group_id()}")
+                logger.info(f"由于没有开启群聊回复或者是群聊不在回复名单内，所以进行事件阻断，阻止后续的LLM回复，群号为: {event.get_group_id()}")
                 return
             
             # 5. 生成智能回复（仅对私聊或未开启群聊语音识别的情况）
