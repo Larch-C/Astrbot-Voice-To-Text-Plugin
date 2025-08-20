@@ -27,9 +27,7 @@ class AudioConverter:
         logger.info("音频转换器重构版本初始化完成")
     
     def _get_strategy_manager(self):
-        """使用工厂方法获取策略管理器，完全避免循环导入"""
-         """使用工厂方法获取策略管理器，完全避免循环导入"""
-        
+    """使用工厂方法获取策略管理器，完全避免循环导入"""
         if not self._strategy_manager:
             # 动态导入工厂类并创建组件
             from .factory import ComponentFactory
