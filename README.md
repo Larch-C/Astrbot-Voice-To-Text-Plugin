@@ -1,12 +1,19 @@
 # AstrBot 语音转文字智能回复插件
 
-该插件在Windows环境下对silk格式音频的转换依赖 [silk-v3-decoder](https://github.com/kn007/silk-v3-decoder) 开源项目。
-
-[silk-v3-decoder](https://github.com/kn007/silk-v3-decoder)的Readme在此 [silk-v3-decoder README_file](README_silk_v3_decoder.md)
+## 该插件在Windows环境下对silk格式音频的转换依赖 [silk-v3-decoder](https://github.com/kn007/silk-v3-decoder) 开源项目。
 
 https://github.com/kn007/silk-v3-decoder
 
+## Windwos环境下该插件需要调用
+
+##  [silk-v3-decoder/windows/silk2mp3.exe at master · kn007/silk-v3-decoder](https://github.com/kn007/silk-v3-decoder/blob/master/windows/silk2mp3.exe) 
+
+## 该程序进行音频转换 但是目前该程序的<u>***安全性未知***</u>，如有用户有Windows环境下安装本插件的需求
+
+## 请**<u>*自行甄别 silk-v3-decoder.exe 该程序是否安全*</u>**
+
 一个AstrBot插件，支持多种音频格式的语音识别，并能够自动生成符合框架人格的智能回复。
+
 ## 使用本插件强烈建议配合 TTS 插件 https://github.com/muyouzhi6/astrabot_plugin_tts_emotion_router 使用 可实现按bot回复情绪使用不同的音色和语速进行全语音对话
 # 注意注意！特别注意！不管你的怎么部署的astrbot框架，docker容器也好，直接丢服务器上的也好，都要能访问到 ffmpeg 指令，如何安装配置 ffmpeg 请往下看！插件里写了各个系统环境常用的 ffmpeg 路径，不一定有你所安装的路径！所以说一定要看清楚！
 

@@ -3,12 +3,14 @@
 """
 import os
 import time
+import json
 from astrbot.api.message_components import Record
 from astrbot.api.event import AstrMessageEvent
 from astrbot.api.event import filter
 import astrbot.api.star as star
 from astrbot.api.star import register, Context
 from astrbot.api import logger, AstrBotConfig
+from astrbot.core.platform.message_type import MessageType
 
 from .config import PluginConfig
 from .exceptions import VoiceToTextError, STTProviderError
@@ -95,7 +97,19 @@ class VoiceToTextPlugin(star.Star):
             if self.console_output:
                 logger.info(f"语音识别结果: {transcribed_text}")
             
-            # 4. 生成智能回复
+            # 4. 处理群聊语音记录
+            # 如果是群聊消息且开启了群聊语音识别，将语音内容记录到历史中但不回复
+            if (event.get_message_type() == MessageType.GROUP_MESSAGE and 
+                self.permission_service.enable_group_voice_recognition and
+                await self.permission_service.can_process_voice(event)):
+                
+                await self._record_voice_to_history(event, transcribed_text)
+                # 阻止后续的 LLM 回复
+                event.stop_event()
+                logger.info(f"群聊语音已记录到历史: {event.get_group_id()}")
+                return
+            
+            # 5. 生成智能回复（仅对私聊或未开启群聊语音识别的情况）
             if self.enable_chat_reply and await self.permission_service.can_generate_reply(event):
                 async for reply in self._generate_intelligent_reply(event, transcribed_text):
                     yield reply
@@ -162,6 +176,40 @@ class VoiceToTextPlugin(star.Star):
             
         except Exception as e:
             logger.error(f"生成智能回复失败: {e}")
+    
+    # Feat: 将语音转换的文本记录到对话历史中，但不生成回复
+    async def _record_voice_to_history(self, event: AstrMessageEvent, transcribed_text: str):
+        """将语音转换的文本记录到对话历史中，但不生成回复"""
+        try:
+            # 获取 ConversationManager 实例
+            conv_manager = self.context.conversation_manager
+            
+            # 获取 unified_msg_origin 和 conversation_id
+            unified_msg_origin = event.unified_msg_origin
+            conversation_id = await conv_manager.get_curr_conversation_id(unified_msg_origin)
+            
+            if not conversation_id:
+                # 如果没有当前会话，创建一个新的
+                conversation_id = await conv_manager.new_conversation(unified_msg_origin)
+            
+            # 获取当前对话历史
+            conversation = await conv_manager.get_conversation(unified_msg_origin, conversation_id)
+            current_history = json.loads(conversation.history) if conversation and conversation.history else []
+            
+            # 构造语音消息记录
+            voice_message = {
+                "role": "user",
+                "content": f"[语音消息] {transcribed_text}"
+            }
+            current_history.append(voice_message)
+            
+            # 更新对话历史
+            await conv_manager.update_conversation(unified_msg_origin, conversation_id, current_history)
+            
+            logger.info(f"语音消息已记录到历史: {transcribed_text[:50]}...")
+            
+        except Exception as e:
+            logger.error(f"记录语音到历史失败: {e}")
     
     async def _cleanup_resources(self):
         """清理资源"""
