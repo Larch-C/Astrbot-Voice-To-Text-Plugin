@@ -28,7 +28,7 @@ class AudioConverter:
     
     def _get_strategy_manager(self):
         """使用工厂方法获取策略管理器，完全避免循环导入"""
-        if not self._strategy_manager:
+        if self._strategy_manager is None:
             # 动态导入工厂类并创建组件
             from .factory import ComponentFactory
             return ComponentFactory.create_conversion_strategy_manager(self.config)
