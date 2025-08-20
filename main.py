@@ -17,7 +17,7 @@ from .services.voice_processing_service import VoiceProcessingService
 from .services.permission_service import PermissionService
 from .services.stt_service import STTService
 
-@register("voice_to_text", "NickMo", "语音转文字智能回复插件", "1.2.1", "")
+@register("voice_to_text", "NickMo", "语音转文字智能回复插件", "1.2.2", "")
 class VoiceToTextPlugin(star.Star):
     """重构后的语音转文字插件 - 使用服务层架构"""
 
